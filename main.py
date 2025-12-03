@@ -11,15 +11,15 @@ import speech_recognition as sr
 from gtts import gTTS
 import tempfile
 
-# --- 1. AYARLAR (İkon ve Menü Ayarı) ---
+# --- 1. AYARLAR ---
 st.set_page_config(
     page_title="BAUN-MYO-AI Asistan", 
-    page_icon="indir.jpeg",  # <-- Senin ikon dosyanın adı
+    page_icon="indir.jpeg", 
     layout="centered",
     initial_sidebar_state="auto"
 )
 
-# --- TASARIM MÜDAHALESİ (FULL CSS) ---
+# --- TASARIM MÜDAHALESİ (CSS DÜZELTİLDİ) ---
 custom_style = """
 <style>
 #MainMenu {visibility: hidden;}
@@ -32,21 +32,27 @@ header {visibility: hidden;}
     padding-bottom: 2rem !important;
 }
 
-/* --- MENÜ BUTONU AYARI (Çizgiler Gitti) --- */
+/* --- MENÜ BUTONU AYARI (DÜZELTİLDİ) --- */
 [data-testid="stSidebarCollapsedControl"] {
     border: none !important;
     background-color: transparent !important;
-    color: #19191a !important;
+    /* BURASI DEĞİŞTİ: Rengi beyaz yaptık ki telefonda görünsün */
+    color: white !important; 
 }
-/* Üzerine gelince de çizgi çıkmasın */
+
+/* Üzerine gelince hafif gri olsun */
 [data-testid="stSidebarCollapsedControl"]:hover {
-    background-color: #19191a !important;
-    border: none !important;
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    color: white !important;
 }
 
 /* --- YAN MENÜ RENGİ --- */
 section[data-testid="stSidebar"] {
-    background-color: #19191a !important;
+    background-color: #f0f2f6 !important;
+}
+/* Yan menüdeki yazıların rengini de koyu yapalım ki açık zeminde okunsun */
+section[data-testid="stSidebar"] p, section[data-testid="stSidebar"] span {
+    color: #31333F !important;
 }
 
 /* Normal Butonları sadeleştir */
@@ -59,7 +65,7 @@ section[data-testid="stSidebar"] {
 """
 st.markdown(custom_style, unsafe_allow_html=True)
 
-# --- 2. OKUL BİLGİLERİ (EMOJİ YASAK) ---
+# --- 2. OKUL BİLGİLERİ ---
 okul_bilgileri = """
 Sen Balıkesir Üniversitesi Meslek Yüksekokulu (BAUN MYO) asistanısın.
 İsmin BAUN Asistan.
@@ -78,6 +84,7 @@ except:
 
 try:
     genai.configure(api_key=api_key)
+    # Burada en sağlam internet siz model 2.0-flash kullanıyoruz
     model = genai.GenerativeModel(
         model_name='gemini-2.0-flash',
         system_instruction=okul_bilgileri
@@ -147,7 +154,7 @@ if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
     st.session_state.messages = []
 
-# --- 6. YAN MENÜ (SADE) ---
+# --- 6. YAN MENÜ ---
 with st.sidebar:
     st.subheader("Menü")
     
@@ -185,7 +192,7 @@ with st.sidebar:
         st.session_state.messages = []
         st.rerun()
 
-# --- 7. ANA EKRAN (SADE) ---
+# --- 7. ANA EKRAN ---
 st.header("BAUN-MYO-AI Asistan")
 st.caption("MYO'nun Görsel, Sesli ve Metinsel Yapay Zekası")
 
@@ -198,11 +205,20 @@ for message in st.session_state.messages:
                 if img: st.image(img, width=300)
             except: pass
 
-# --- 8. GİRİŞ (İPUCU VE MESAJ KUTUSU) ---
+# --- 8. GİRİŞ ---
 audio_value = None
 if ses_aktif:
     st.write("Mikrofon:")
     audio_value = st.audio_input("Konuş")
+
+st.markdown(
+    """
+    <div style='text-align: center; color: gray; font-size: 12px; margin-bottom: 5px;'>
+    💡 <b>İpucu:</b> "Sınav tarihleri ne zaman?", "Yemekte ne var?" veya "Ders programı" diyebilirsin.
+    </div>
+    """, 
+    unsafe_allow_html=True
+)
 
 text_input = st.chat_input("Mesajınızı yazın...")
 
