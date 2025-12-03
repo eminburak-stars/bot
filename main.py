@@ -11,15 +11,15 @@ import speech_recognition as sr
 from gtts import gTTS
 import tempfile
 
-# --- 1. AYARLAR (SADE) ---
+# --- 1. AYARLAR (İkon ve Menü Ayarı) ---
 st.set_page_config(
     page_title="BAUN-MYO-AI Asistan", 
-    page_icon="indir.jpeg",  # Senin resim dosyan
+    page_icon="indir.jpeg",  # <-- Senin ikon dosyanın adı
     layout="centered",
     initial_sidebar_state="auto"
 )
 
-# --- TASARIM MÜDAHALESİ (CSS) ---
+# --- TASARIM MÜDAHALESİ (FULL CSS) ---
 custom_style = """
 <style>
 #MainMenu {visibility: hidden;}
@@ -32,23 +32,24 @@ header {visibility: hidden;}
     padding-bottom: 2rem !important;
 }
 
-/* Sol Üst Menü Butonunu Şeffaf Yap */
+/* --- MENÜ BUTONU AYARI (Çizgiler Gitti) --- */
 [data-testid="stSidebarCollapsedControl"] {
     border: none !important;
     background-color: transparent !important;
     color: #31333F !important;
 }
+/* Üzerine gelince de çizgi çıkmasın */
 [data-testid="stSidebarCollapsedControl"]:hover {
-    background-color: #f0f2f6 !important;
+    background-color: ##1a1a1a !important;
     border: none !important;
 }
 
-/* Yan Menü Rengi */
+/* --- YAN MENÜ RENGİ --- */
 section[data-testid="stSidebar"] {
-    background-color: #f0f2f6 !important;
+    background-color: ##1a1a1a !important;
 }
 
-/* Butonları sadeleştir */
+/* Normal Butonları sadeleştir */
 .stButton button {
     border: 1px solid #e0e0e0;
     border-radius: 8px;
@@ -58,7 +59,7 @@ section[data-testid="stSidebar"] {
 """
 st.markdown(custom_style, unsafe_allow_html=True)
 
-# --- 2. OKUL BİLGİLERİ ---
+# --- 2. OKUL BİLGİLERİ (EMOJİ YASAK) ---
 okul_bilgileri = """
 Sen Balıkesir Üniversitesi Meslek Yüksekokulu (BAUN MYO) asistanısın.
 İsmin BAUN Asistan.
@@ -197,13 +198,13 @@ for message in st.session_state.messages:
                 if img: st.image(img, width=300)
             except: pass
 
-# --- 8. GİRİŞ (İPUCU BURAYA EKLENDİ) ---
+# --- 8. GİRİŞ (İPUCU VE MESAJ KUTUSU) ---
 audio_value = None
 if ses_aktif:
     st.write("Mikrofon:")
     audio_value = st.audio_input("Konuş")
 
-# İŞTE BURASI: Mesaj kutusunun tam üstüne ipucunu koyduk
+# İPUCU YAZISI (Tam yerinde)
 st.markdown(
     """
     <div style='text-align: center; color: gray; font-size: 12px; margin-bottom: 5px;'>
@@ -213,7 +214,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-text_input = st.chat_input("Mesajınızı yazın...")  # Mesaj kutusu burada
+text_input = st.chat_input("Mesajınızı yazın...")
 
 prompt = None
 if ses_aktif and audio_value:
