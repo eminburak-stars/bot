@@ -19,12 +19,17 @@ st.set_page_config(
     initial_sidebar_state="auto"
 )
 
-# --- TASARIM MÜDAHALESİ (CSS) ---
+# --- TASARIM MÜDAHALESİ (CSS) - DÜZELTİLDİ ---
 custom_style = """
 <style>
+/* Menü ve Footer'ı gizle */
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
-header {visibility: hidden;}
+
+/* Header'ı gizliyoruz AMA yer kaplamasına izin veriyoruz ki buton kaybolmasın */
+header {
+    visibility: hidden;
+}
 
 /* Mobilde üst boşluğu alalım */
 .block-container {
@@ -32,18 +37,25 @@ header {visibility: hidden;}
     padding-bottom: 2rem !important;
 }
 
-/* Sol Üst Menü Butonunu Şeffaf Yap */
+/* İŞTE ÇÖZÜM BURASI KRAL: */
+/* Header gizli olsa bile, menü açma butonunu ZORLA görünür yapıyoruz */
 [data-testid="stSidebarCollapsedControl"] {
+    visibility: visible !important; /* Gizli header içinde bunu göster */
+    display: block !important;
     border: none !important;
     background-color: transparent !important;
     color: #19191a !important;
+    z-index: 99999 !important; /* En üste çıkart */
 }
+
+/* Butonun üzerine gelinceki hali */
 [data-testid="stSidebarCollapsedControl"]:hover {
     background-color: #19191a !important;
     border: none !important;
+    color: white !important; /* Hover olunca yazı okunsun diye white yapabilirsin veya dokunma */
 }
 
-/* Yan Menü Rengi */
+/* Yan Menü Rengi (Senin ayarlar) */
 section[data-testid="stSidebar"] {
     background-color: #19191a !important;
 }
@@ -202,16 +214,6 @@ audio_value = None
 if ses_aktif:
     st.write("Mikrofon:")
     audio_value = st.audio_input("Konuş")
-
-# İŞTE BURASI: Mesaj kutusunun tam üstüne ipucunu koyduk
-st.markdown(
-    """
-    <div style='text-align: center; color: gray; font-size: 12px; margin-bottom: 5px;'>
-    💡 <b>İpucu:</b> "Sınav tarihleri ne zaman?", "Yemekte ne var?" veya "Ders programı" diyebilirsin.
-    </div>
-    """, 
-    unsafe_allow_html=True
-)
 
 text_input = st.chat_input("Mesajınızı yazın...")  # Mesaj kutusu burada
 
