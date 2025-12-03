@@ -29,36 +29,37 @@ footer {visibility: hidden;}
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
-# !!! BURAYA KENDİ KEY'İNİ YAZ KRAL !!!
-# --- 3. MODELİ BAŞLAT ---
-# API Key'i kodun içine YAZMA! st.secrets'tan çekiyoruz.
-try:
-    api_key = st.secrets["GOOGLE_API_KEY"]
-except FileNotFoundError:
-    st.error("❌ Hacı, .streamlit/secrets.toml dosyası yok ya da key eksik!")
-    st.stop()
+# --- 2. BİLGİLERİ DOSYADAN OKU (GARANTİ YÖNTEM) ---
+import os
 
-genai.configure(api_key=api_key)
+def bilgileri_yukle():
+    try:
+        # Kodun çalıştığı klasörü bul
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # bilgi.txt ile yolu birleştir
+        file_path = os.path.join(current_dir, "bilgi.txt")
+        
+        with open(file_path, "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        return "Hata: bilgi.txt dosyası bulunamadı! Lütfen dosyayı GitHub'a yüklediğinden emin ol."
 
-try:
-    model = genai.GenerativeModel(
-        model_name='gemini-2.0-flash',
-        system_instruction=okul_bilgileri
-    )
-except Exception as e:
-    st.error(f"Bağlantı hatası: {e}")
-    st.stop()
 okul_bilgileri = bilgileri_yukle()
 
 # --- 3. MODELİ BAŞLAT ---
-if "BURAYA" in GOOGLE_API_KEY or not GOOGLE_API_KEY or GOOGLE_API_KEY == "xxxxx":
-    st.error("❌ Hacı API Key girmeyi unuttun kodun içine! Kodun 35. satırına bi el at.")
+# API Key'i secrets'tan çekiyoruz (Güvenlik için)
+try:
+    api_key = st.secrets["GOOGLE_API_KEY"]
+except:
+    # Eğer secrets dosyası yoksa veya hata varsa buraya düşer
+    st.error("❌ Hacı, .streamlit/secrets.toml dosyası yok veya API Key bulunamadı!")
     st.stop()
 
 try:
-    genai.configure(api_key=GOOGLE_API_KEY)
+    genai.configure(api_key=api_key)
     model = genai.GenerativeModel(
         model_name='gemini-2.0-flash',
+        # Burada az önce tanımladığımız okul_bilgileri'ni kullanıyoruz
         system_instruction=okul_bilgileri
     )
 except Exception as e:
@@ -66,6 +67,8 @@ except Exception as e:
     st.stop()
 
 # --- 4. GEÇMİŞ YÖNETİMİ ---
+HISTORY_FILE = "sohbet_gecmisi.json"
+
 def load_history():
     if not os.path.exists(HISTORY_FILE): return []
     try:
@@ -93,10 +96,7 @@ def base64_to_image(base64_str):
 
 # --- 5. SES İŞLEMLERİ ---
 def sesten_yaziya(audio_bytes):
-    """Mikrofondan gelen sesi yazıya çevirir"""
     r = sr.Recognizer()
-    
-    # Geçici dosya oluşturup sesi oraya yazıyoruz
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_audio:
         tmp_audio.write(audio_bytes)
         tmp_audio_path = tmp_audio.name
@@ -104,26 +104,22 @@ def sesten_yaziya(audio_bytes):
     try:
         with sr.AudioFile(tmp_audio_path) as source:
             audio_data = r.record(source)
-            # Google Speech API (Türkçe)
             text = r.recognize_google(audio_data, language="tr-TR")
             return text
-    except sr.UnknownValueError:
+    except:
         return None
-    except sr.RequestError:
-        return "Hata: Google Ses Servisine ulaşılamadı."
     finally:
         if os.path.exists(tmp_audio_path):
-            os.unlink(tmp_audio_path) # Temizlik imandan gelir
+            os.unlink(tmp_audio_path)
 
 def yazidan_sese(text):
-    """Metni ses dosyasına çevirir"""
     try:
         tts = gTTS(text=text, lang='tr')
         fp = io.BytesIO()
         tts.write_to_fp(fp)
         fp.seek(0)
         return fp
-    except Exception as e:
+    except:
         return None
 
 # --- SESSION BAŞLATMA ---
@@ -149,8 +145,7 @@ with st.sidebar:
 
     st.divider()
 
-    # --- SESLİ SOHBET MODU ---
-    # Bu tuş kapalıysa mikrofon görünmez, açıksa görünür ve asistan konuşur.
+    # SESLİ SOHBET MODU
     ses_aktif = st.toggle("🎙️ Sesli Sohbet Modu", value=False)
 
     st.divider()
@@ -177,7 +172,6 @@ with st.sidebar:
 st.title("🎓 BAUN-MYO AI Asistanı")
 st.caption("Görsel, Metinsel ve Sesli Analiz Asistanı")
 
-# Geçmiş mesajları yazdır
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
@@ -188,53 +182,35 @@ for message in st.session_state.messages:
             except: pass
 
 # --- 8. GİRİŞ YÖNTEMLERİ ---
-
-audio_value = None # Başlangıçta boş
-
-# Sadece mod açıksa mikrofonu göster
+audio_value = None
 if ses_aktif:
     st.write("🎙️ **Sesli Soru Sor:**")
     audio_value = st.audio_input("Mikrofonu kullanmak için tıkla")
 
-# Yazı girişi her zaman var
 text_input = st.chat_input("Sorunuzu yazın...")
 
 prompt = None
-is_audio_prompt = False
-
-# Giriş kontrolü
-if ses_aktif and audio_value: # Ses modu açık ve ses kaydı varsa
+if ses_aktif and audio_value:
     with st.spinner("Sesin yazıya dökülüyor kral..."):
-        # !!! KRİTİK NOKTA: .read() KULLANIYORUZ !!!
         prompt = sesten_yaziya(audio_value.read())
-        
-        if prompt:
-            is_audio_prompt = True
-        else:
+        if not prompt:
             st.warning("Dediklerini tam anlayamadım, tekrar dene be gülüm.")
-
-elif text_input: # Ses yoksa yazıya bak
+elif text_input:
     prompt = text_input
 
-# --- 9. CEVAP ÜRETME VE KAYIT ---
+# --- 9. CEVAP ÜRETME ---
 if prompt:
-    # Resmi kaydet (varsa)
     saved_image_base64 = None
     saved_image_for_api = None
     if current_image:
-        try:
-            saved_image_base64 = image_to_base64(current_image)
-            saved_image_for_api = current_image.copy()
-        except Exception as e:
-            st.error(f"Resim hatası: {e}")
+        saved_image_base64 = image_to_base64(current_image)
+        saved_image_for_api = current_image.copy()
     
-    # Kullanıcı mesajını ekrana bas
     with st.chat_message("user"):
         st.markdown(prompt)
         if saved_image_for_api:
             st.image(saved_image_for_api, width=300)
     
-    # Geçmişe ekle
     st.session_state.messages.append({
         "role": "user", 
         "content": prompt,
@@ -243,7 +219,6 @@ if prompt:
 
     try:
         with st.spinner('Yapay Zeka düşünüyor...'):
-            # Chat geçmişini hazırla
             chat_history_text = []
             for m in st.session_state.messages[:-1]:
                 chat_history_text.append({
@@ -260,24 +235,19 @@ if prompt:
             
             bot_reply = response.text
         
-        # Asistan cevabı
         with st.chat_message("assistant"):
             st.markdown(bot_reply)
-            
-            # Eğer mod açıksa sesli oku
             if ses_aktif:
                 audio_file = yazidan_sese(bot_reply)
                 if audio_file:
                     st.audio(audio_file, format='audio/mp3', autoplay=True)
 
-        # Asistan mesajını kaydet
         st.session_state.messages.append({
             "role": "assistant", 
             "content": bot_reply,
             "image": None
         })
         
-        # JSON'a kaydet
         current_history = load_history()
         chat_exists = False
         for chat in current_history:
