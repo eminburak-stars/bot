@@ -36,16 +36,16 @@ header {visibility: hidden;}
 [data-testid="stSidebarCollapsedControl"] {
     border: none !important;
     background-color: transparent !important;
-    color: #31333F !important;
+    color: #19191a !important;
 }
 [data-testid="stSidebarCollapsedControl"]:hover {
-    background-color: #f0f2f6 !important;
+    background-color: #19191a !important;
     border: none !important;
 }
 
 /* Yan Menü Rengi */
 section[data-testid="stSidebar"] {
-    background-color: #f0f2f6 !important;
+    background-color: #19191a !important;
 }
 
 /* Butonları sadeleştir */
