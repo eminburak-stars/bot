@@ -204,16 +204,6 @@ if ses_aktif:
     st.write("Mikrofon:")
     audio_value = st.audio_input("Konuş")
 
-# İPUCU YAZISI (Tam yerinde)
-st.markdown(
-    """
-    <div style='text-align: center; color: gray; font-size: 12px; margin-bottom: 5px;'>
-    💡 <b>İpucu:</b> "Sınav tarihleri ne zaman?", "Yemekte ne var?" veya "Ders programı" diyebilirsin.
-    </div>
-    """, 
-    unsafe_allow_html=True
-)
-
 text_input = st.chat_input("Mesajınızı yazın...")
 
 prompt = None
