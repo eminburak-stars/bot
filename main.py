@@ -11,55 +11,60 @@ import speech_recognition as sr
 from gtts import gTTS
 import tempfile
 
-# --- 1. AYARLAR ---
+# --- 1. AYARLAR (SADE) ---
 st.set_page_config(
-    page_title="BAUN-MYO AI Asistanı", 
-    page_icon="🎓", 
+    page_title="BAUN Asistan", 
+    page_icon="🤖",  # İstersen buraya emoji yerine "B" falan yazamazsın, icon şart ama daha sade robot yaptım.
     layout="centered",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="auto"
 )
 
-# Gereksiz Streamlit yazılarını gizle
-hide_streamlit_style = """
+# --- TASARIM MÜDAHALESİ (CSS) ---
+# Emojiler gitti, gereksiz boşluklar alındı, footer gizlendi.
+custom_style = """
 <style>
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
-.stDeployButton {display:none;}
+header {visibility: hidden;} /* Üstteki renkli şeridi uçurduk */
+
+/* Mobilde üst boşluğu alalım */
+.block-container {
+    padding-top: 2rem !important;
+    padding-bottom: 2rem !important;
+}
+
+/* Butonları sadeleştir */
+.stButton button {
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background-color: transparent;
+}
 </style>
 """
-st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+st.markdown(custom_style, unsafe_allow_html=True)
 
-# --- 2. BİLGİLERİ DOSYADAN OKU (GARANTİ YÖNTEM) ---
-import os
-
-def bilgileri_yukle():
-    try:
-        # Kodun çalıştığı klasörü bul
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        # bilgi.txt ile yolu birleştir
-        file_path = os.path.join(current_dir, "bilgi.txt")
-        
-        with open(file_path, "r", encoding="utf-8") as f:
-            return f.read()
-    except FileNotFoundError:
-        return "Hata: bilgi.txt dosyası bulunamadı! Lütfen dosyayı GitHub'a yüklediğinden emin ol."
-
-okul_bilgileri = bilgileri_yukle()
+# --- 2. OKUL BİLGİLERİ (EMOJİ YASAKLI VERSİYON) ---
+# Buradaki "Asla emoji kullanma" emri çok önemli
+okul_bilgileri = """
+Sen Balıkesir Üniversitesi Meslek Yüksekokulu (BAUN MYO) asistanısın.
+İsmin BAUN Asistan.
+Çok ciddi, sade ve net cevaplar ver.
+Cevaplarında ASLA emoji kullanma.
+Samimi ol ama cıvık olma. Sadece metin odaklı konuş.
+Tasarımcı gibi düşün, minimalist cevaplar ver.
+"""
 
 # --- 3. MODELİ BAŞLAT ---
-# API Key'i secrets'tan çekiyoruz (Güvenlik için)
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
 except:
-    # Eğer secrets dosyası yoksa veya hata varsa buraya düşer
-    st.error("❌ Hacı, .streamlit/secrets.toml dosyası yok veya API Key bulunamadı!")
+    st.error("API Key bulunamadı.")
     st.stop()
 
 try:
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel(
         model_name='gemini-2.0-flash',
-        # Burada az önce tanımladığımız okul_bilgileri'ni kullanıyoruz
         system_instruction=okul_bilgileri
     )
 except Exception as e:
@@ -122,57 +127,60 @@ def yazidan_sese(text):
     except:
         return None
 
-# --- SESSION BAŞLATMA ---
+# --- SESSION ---
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
     st.session_state.messages = []
 
-# --- 6. YAN MENÜ (SIDEBAR) ---
+# --- 6. YAN MENÜ (SADE) ---
 with st.sidebar:
-    st.header("🗂️ BAUN-MYO AI")
+    st.subheader("Menü")
     
-    st.subheader("📷 Fotoğraf Yükle")
-    uploaded_file = st.file_uploader("Bir resim seç...", type=["jpg", "png", "jpeg"])
+    # Görsel Yükleme (Sade)
+    uploaded_file = st.file_uploader("Görsel Ekle", type=["jpg", "png", "jpeg"])
     
     current_image = None
     if uploaded_file:
         try:
             current_image = Image.open(uploaded_file)
-            st.image(current_image, caption='Analize Hazır', use_container_width=True)
-            st.info("Resim yüklendi! Şimdi sorunu sor.")
-        except Exception as e:
-            st.error(f"Hata: {e}")
+            st.image(current_image, caption='Görsel Hazır', use_container_width=True)
+        except:
+            st.error("Görsel yüklenemedi")
 
-    st.divider()
+    # Boşluk bırak (Divider yerine text kullandık)
+    st.text("")
 
-    # SESLİ SOHBET MODU
-    ses_aktif = st.toggle("🎙️ Sesli Sohbet Modu", value=False)
+    # Ses Modu
+    ses_aktif = st.toggle("Sesli Yanıt", value=False)
 
-    st.divider()
+    st.text("")
 
-    if st.button("➕ Yeni Sohbet", use_container_width=True):
+    if st.button("Yeni Sohbet", use_container_width=True):
         st.session_state.session_id = str(uuid.uuid4())
         st.session_state.messages = []
         st.rerun()
     
     st.subheader("Geçmiş")
     for chat in reversed(load_history()):
-        btn_text = chat.get("title", "Sohbet")
-        if st.button(f"💬 {btn_text}", key=chat["id"], use_container_width=True):
+        # Başlık çok uzunsa kes
+        raw_title = chat.get("title", "Sohbet")
+        btn_text = raw_title[:20] + "..." if len(raw_title) > 20 else raw_title
+        
+        if st.button(btn_text, key=chat["id"], use_container_width=True):
             st.session_state.session_id = chat["id"]
             st.session_state.messages = chat["messages"]
             st.rerun()
             
-    if st.button("🗑️ Hepsini Sil"):
+    if st.button("Geçmişi Temizle"):
         if os.path.exists(HISTORY_FILE): os.remove(HISTORY_FILE)
         st.session_state.messages = []
         st.rerun()
 
-# --- 7. ANA EKRAN ---
-st.title("🎓 BAUN-MYO AI Asistanı")
-st.caption("Görsel, Metinsel ve Sesli Analiz Asistanı")
+# --- 7. ANA EKRAN (SADE) ---
+st.header("BAUN Asistan")
 
 for message in st.session_state.messages:
+    # Role iconlarını kaldırdık, default minimalist iconlar gelir
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
         if message.get("image"):
@@ -181,24 +189,24 @@ for message in st.session_state.messages:
                 if img: st.image(img, width=300)
             except: pass
 
-# --- 8. GİRİŞ YÖNTEMLERİ ---
+# --- 8. GİRİŞ ---
 audio_value = None
 if ses_aktif:
-    st.write("🎙️ **Sesli Soru Sor:**")
-    audio_value = st.audio_input("Mikrofonu kullanmak için tıkla")
+    st.write("Mikrofon:")
+    audio_value = st.audio_input("Konuş")
 
-text_input = st.chat_input("Sorunuzu yazın...")
+text_input = st.chat_input("Mesajınızı yazın...")
 
 prompt = None
 if ses_aktif and audio_value:
-    with st.spinner("Sesin yazıya dökülüyor kral..."):
+    with st.spinner("Dinliyorum..."):
         prompt = sesten_yaziya(audio_value.read())
         if not prompt:
-            st.warning("Dediklerini tam anlayamadım, tekrar dene be gülüm.")
+            st.warning("Anlaşılamadı.")
 elif text_input:
     prompt = text_input
 
-# --- 9. CEVAP ÜRETME ---
+# --- 9. CEVAP ---
 if prompt:
     saved_image_base64 = None
     saved_image_for_api = None
@@ -218,7 +226,7 @@ if prompt:
     })
 
     try:
-        with st.spinner('Yapay Zeka düşünüyor...'):
+        with st.spinner('...'):
             chat_history_text = []
             for m in st.session_state.messages[:-1]:
                 chat_history_text.append({
@@ -248,6 +256,7 @@ if prompt:
             "image": None
         })
         
+        # Kayıt İşlemleri
         current_history = load_history()
         chat_exists = False
         for chat in current_history:
@@ -257,7 +266,7 @@ if prompt:
                 break
         
         if not chat_exists:
-            title = prompt[:25] + "..." if len(prompt) > 25 else prompt
+            title = prompt[:20] + "..." if len(prompt) > 20 else prompt
             new_data = {
                 "id": st.session_state.session_id, 
                 "title": title, 
@@ -268,4 +277,4 @@ if prompt:
         save_history(current_history)
 
     except Exception as e:
-        st.error(f"Bir sıkıntı çıktı kral: {e}")
+        st.error(f"Hata: {e}")
