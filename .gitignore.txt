@@ -1,0 +1,4 @@
+.streamlit/secrets.toml
+sohbet_gecmisi.json
+__pycache__/
+*.pyc
