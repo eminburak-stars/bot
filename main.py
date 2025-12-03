@@ -11,15 +11,15 @@ import speech_recognition as sr
 from gtts import gTTS
 import tempfile
 
-# --- 1. AYARLAR ---
+# --- 1. AYARLAR (SADE) ---
 st.set_page_config(
     page_title="BAUN-MYO-AI Asistan", 
-    page_icon="indir.jpeg", 
+    page_icon="indir.jpeg",  # Senin resim dosyan
     layout="centered",
     initial_sidebar_state="auto"
 )
 
-# --- TASARIM MÜDAHALESİ (CSS DÜZELTİLDİ) ---
+# --- TASARIM MÜDAHALESİ (CSS) ---
 custom_style = """
 <style>
 #MainMenu {visibility: hidden;}
@@ -32,30 +32,23 @@ header {visibility: hidden;}
     padding-bottom: 2rem !important;
 }
 
-/* --- MENÜ BUTONU AYARI (DÜZELTİLDİ) --- */
+/* Sol Üst Menü Butonunu Şeffaf Yap */
 [data-testid="stSidebarCollapsedControl"] {
     border: none !important;
     background-color: transparent !important;
-    /* BURASI DEĞİŞTİ: Rengi beyaz yaptık ki telefonda görünsün */
-    color: white !important; 
+    color: #31333F !important;
 }
-
-/* Üzerine gelince hafif gri olsun */
 [data-testid="stSidebarCollapsedControl"]:hover {
-    background-color: rgba(255, 255, 255, 0.1) !important;
-    color: white !important;
+    background-color: #f0f2f6 !important;
+    border: none !important;
 }
 
-/* --- YAN MENÜ RENGİ --- */
+/* Yan Menü Rengi */
 section[data-testid="stSidebar"] {
     background-color: #f0f2f6 !important;
 }
-/* Yan menüdeki yazıların rengini de koyu yapalım ki açık zeminde okunsun */
-section[data-testid="stSidebar"] p, section[data-testid="stSidebar"] span {
-    color: #31333F !important;
-}
 
-/* Normal Butonları sadeleştir */
+/* Butonları sadeleştir */
 .stButton button {
     border: 1px solid #e0e0e0;
     border-radius: 8px;
@@ -84,7 +77,6 @@ except:
 
 try:
     genai.configure(api_key=api_key)
-    # Burada en sağlam internet siz model 2.0-flash kullanıyoruz
     model = genai.GenerativeModel(
         model_name='gemini-2.0-flash',
         system_instruction=okul_bilgileri
@@ -154,7 +146,7 @@ if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
     st.session_state.messages = []
 
-# --- 6. YAN MENÜ ---
+# --- 6. YAN MENÜ (SADE) ---
 with st.sidebar:
     st.subheader("Menü")
     
@@ -192,7 +184,7 @@ with st.sidebar:
         st.session_state.messages = []
         st.rerun()
 
-# --- 7. ANA EKRAN ---
+# --- 7. ANA EKRAN (SADE) ---
 st.header("BAUN-MYO-AI Asistan")
 st.caption("MYO'nun Görsel, Sesli ve Metinsel Yapay Zekası")
 
@@ -205,12 +197,13 @@ for message in st.session_state.messages:
                 if img: st.image(img, width=300)
             except: pass
 
-# --- 8. GİRİŞ ---
+# --- 8. GİRİŞ (İPUCU BURAYA EKLENDİ) ---
 audio_value = None
 if ses_aktif:
     st.write("Mikrofon:")
     audio_value = st.audio_input("Konuş")
 
+# İŞTE BURASI: Mesaj kutusunun tam üstüne ipucunu koyduk
 st.markdown(
     """
     <div style='text-align: center; color: gray; font-size: 12px; margin-bottom: 5px;'>
@@ -220,7 +213,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-text_input = st.chat_input("Mesajınızı yazın...")
+text_input = st.chat_input("Mesajınızı yazın...")  # Mesaj kutusu burada
 
 prompt = None
 if ses_aktif and audio_value:
