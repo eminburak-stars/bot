@@ -19,45 +19,34 @@ st.set_page_config(
     initial_sidebar_state="auto"
 )
 
-# --- TASARIM MÜDAHALESİ (CSS) - DÜZELTİLDİ ---
+# --- TASARIM MÜDAHALESİ (CSS) - NORMALE DÖNÜŞ ---
 custom_style = """
 <style>
-/* Menü ve Footer'ı gizle */
-#MainMenu {visibility: hidden;}
+/* Header'ı ve 3 noktayı GİZLEMİYORUZ artık. */
+/* Sadece footer (alttaki 'Made with Streamlit' yazısı) gizli kalsın */
 footer {visibility: hidden;}
 
-/* Header'ı gizliyoruz AMA yer kaplamasına izin veriyoruz ki buton kaybolmasın */
+/* Header'ın arka planını şeffaf yapalım ki tasarımınla bütünleşsin */
 header {
-    visibility: hidden;
+    background-color: transparent !important;
 }
 
-/* Mobilde üst boşluğu alalım */
+/* Mobilde içerik header'ın altında kalmasın diye boşluğu ayarladık */
 .block-container {
-    padding-top: 2rem !important;
+    padding-top: 3rem !important;
     padding-bottom: 2rem !important;
 }
 
-/* İŞTE ÇÖZÜM BURASI KRAL: */
-/* Header gizli olsa bile, menü açma butonunu ZORLA görünür yapıyoruz */
-[data-testid="stSidebarCollapsedControl"] {
-    visibility: visible !important; /* Gizli header içinde bunu göster */
-    display: block !important;
-    border: none !important;
-    background-color: transparent !important;
-    color: #19191a !important;
-    z-index: 99999 !important; /* En üste çıkart */
-}
+/* --- SENİN ÖZEL RENK AYARLARIN (DOKUNMADIM) --- */
 
-/* Butonun üzerine gelinceki hali */
-[data-testid="stSidebarCollapsedControl"]:hover {
-    background-color: #19191a !important;
-    border: none !important;
-    color: white !important; /* Hover olunca yazı okunsun diye white yapabilirsin veya dokunma */
-}
-
-/* Yan Menü Rengi (Senin ayarlar) */
+/* Yan Menü Rengi */
 section[data-testid="stSidebar"] {
     background-color: #19191a !important;
+}
+
+/* Yan menüdeki kapatma/açma butonunun rengi (görünür olması için) */
+[data-testid="stSidebarCollapsedControl"] {
+    color: #19191a !important;
 }
 
 /* Butonları sadeleştir */
