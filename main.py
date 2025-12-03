@@ -54,7 +54,7 @@ section[data-testid="stSidebar"] {
 """
 st.markdown(custom_style, unsafe_allow_html=True)
 
-# --- 2. OKUL BİLGİLERİ VE KURALLAR ---
+# --- 2. OKUL BİLGİLERİ ---
 okul_bilgileri = """
 Sen Balıkesir Üniversitesi Meslek Yüksekokulu (BAUN MYO) asistanısın.
 İsmin BAUN Asistan.
@@ -65,38 +65,31 @@ TEMEL PRENSİPLER:
 3. Samimi ol ama resmiyeti koru.
 
 İNTERNET VE ARAMA KURALLARI (ÇOK KRİTİK):
-1. HEDEF SİTE: Aramalarında ve cevaplarında SADECE "balikesirmyo.balikesir.edu.tr" adresini kaynak al. Başka hiçbir siteye bakma.
-
-2. İZİNLİ KONULAR:
-   Sadece şu 3 ana başlık hakkında bilgi ver, diğerlerini (Yemek, Duyuru vb.) görmezden gel:
-   A) KADRO (Akademik/İdari personel)
-   B) HAKKIMIZDA (Tarihçe, Yönetim)
-   C) BÖLÜMLER (Programlar, Misyon, Vizyon)
-
-3. YASAKLI KONULAR:
-   - "Duyurular", "Haberler", "Yemek Listesi", "Sınav Takvimi" gibi konulara BAKMA. Sorulsa bile "Yetkim dışı" de.
-
-4. ARAMA TAKTİĞİ:
-   - Google araması yaparken, aradığın konunun yanına mutlaka "site:balikesirmyo.balikesir.edu.tr" ekle.
-
-5. KAYNAK GÖSTER:
-   - Cevabının sonuna mutlaka bilgiyi bulduğun sayfanın linkini ekle.
+1. HEDEF SİTE: Aramalarında ve cevaplarında SADECE "balikesirmyo.balikesir.edu.tr" adresini kaynak al.
+2. YASAKLI KONULAR: "Duyurular", "Haberler", "Yemek Listesi" gibi konulara BAKMA.
+3. İZİNLİ KONULAR: Sadece KADRO, HAKKIMIZDA ve BÖLÜMLER.
+4. ARAMA TAKTİĞİ: Aradığın konunun yanına mutlaka "site:balikesirmyo.balikesir.edu.tr" ekle.
+5. KAYNAK GÖSTER: Cevabının sonuna link ekle.
 """
 
 # --- 3. MODELİ BAŞLAT ---
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
 except:
-    st.error("API Key bulunamadı veya hatalı. Lütfen Secrets ayarlarını kontrol et.")
+    st.error("API Key bulunamadı. Lütfen Streamlit ayarlarından Secrets kısmını kontrol et.")
     st.stop()
 
 try:
     genai.configure(api_key=api_key)
     
-    # DÜZELTME: Modeli 'gemini-1.5-flash' yaptık. Bu sürüm arama motoruyla %100 uyumludur.
+    # HATA BURADAYDI ÇÖZÜLDÜ: Hata mesajının istediği gibi "google_search" kullandık.
+    tools_list = [
+        {"google_search": {}} 
+    ]
+    
     model = genai.GenerativeModel(
         model_name='gemini-1.5-flash',
-        tools='google_search_retrieval', # Bu komut 1.5 sürümünde sorunsuz çalışır
+        tools=tools_list,
         system_instruction=okul_bilgileri
     )
 except Exception as e:
