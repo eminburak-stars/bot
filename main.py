@@ -13,7 +13,7 @@ import tempfile
 
 # --- 1. AYARLAR (SADE) ---
 st.set_page_config(
-    page_title="BAUN Asistan", 
+    page_title="BAUN-MYO-AI Asistan", 
     page_icon="indir.jpeg",  # <--- Tırnak içinde resmin tam adını yazdık
     layout="centered",
     initial_sidebar_state="auto"
@@ -177,7 +177,8 @@ with st.sidebar:
         st.rerun()
 
 # --- 7. ANA EKRAN (SADE) ---
-st.header("BAUN Asistan")
+st.header("BAUN-MYO-AI Asistan")
+st.caption("MYO'nun  Görsel, Sesli ve Metinsel Yapay Zekası")
 
 for message in st.session_state.messages:
     # Role iconlarını kaldırdık, default minimalist iconlar gelir
