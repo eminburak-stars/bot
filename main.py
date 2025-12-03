@@ -11,45 +11,40 @@ import speech_recognition as sr
 from gtts import gTTS
 import tempfile
 
-# --- 1. AYARLAR (İkon ve Menü Ayarı) ---
+# --- 1. AYARLAR ---
 st.set_page_config(
     page_title="BAUN-MYO-AI Asistan", 
-    page_icon="indir.jpeg",  # <-- Senin ikon dosyanın adı
+    page_icon="indir.jpeg", 
     layout="centered",
     initial_sidebar_state="auto"
 )
 
-# --- TASARIM MÜDAHALESİ (FULL CSS) ---
+# --- TASARIM (CSS) ---
 custom_style = """
 <style>
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
 header {visibility: hidden;}
 
-/* Mobilde üst boşluğu alalım */
 .block-container {
     padding-top: 2rem !important;
     padding-bottom: 2rem !important;
 }
 
-/* --- MENÜ BUTONU AYARI (Çizgiler Gitti) --- */
 [data-testid="stSidebarCollapsedControl"] {
     border: none !important;
     background-color: transparent !important;
-    color: #1b1b1c !important;
+    color: #31333F !important;
 }
-/* Üzerine gelince de çizgi çıkmasın */
 [data-testid="stSidebarCollapsedControl"]:hover {
-    background-color: ##1b1b1c !important;
+    background-color: #f0f2f6 !important;
     border: none !important;
 }
 
-/* --- YAN MENÜ RENGİ --- */
 section[data-testid="stSidebar"] {
-    background-color: ##1b1b1c !important;
+    background-color: #f0f2f6 !important;
 }
 
-/* Normal Butonları sadeleştir */
 .stButton button {
     border: 1px solid #e0e0e0;
     border-radius: 8px;
@@ -59,14 +54,42 @@ section[data-testid="stSidebar"] {
 """
 st.markdown(custom_style, unsafe_allow_html=True)
 
-# --- 2. OKUL BİLGİLERİ (EMOJİ YASAK) ---
+# --- 2. OKUL BİLGİLERİ VE FİLTRE KURALLARI ---
 okul_bilgileri = """
 Sen Balıkesir Üniversitesi Meslek Yüksekokulu (BAUN MYO) asistanısın.
 İsmin BAUN Asistan.
-Çok ciddi, sade ve net cevaplar ver.
-Cevaplarında ASLA emoji kullanma.
-Samimi ol ama cıvık olma. Sadece metin odaklı konuş.
-Tasarımcı gibi düşün, minimalist cevaplar ver.
+
+TEMEL PRENSİPLER:
+1. Ciddi, sade ve net cevaplar ver.
+2. ASLA emoji kullanma.
+3. Samimi ol ama resmiyeti koru.
+
+İNTERNET VE ARAMA KURALLARI (ÇOK KRİTİK):
+1. HEDEF SİTE: Aramalarında ve cevaplarında SADECE "balikesirmyo.balikesir.edu.tr" adresini kaynak al. Başka hiçbir siteye bakma.
+
+2. İZİNLİ KONULAR (SADECE BUNLARA CEVAP VER):
+   Asistan olarak sadece aşağıdaki 3 ana başlık hakkında bilgi toplayabilir ve sunabilirsin. Bunların dışındaki konuları (Duyurular, Yemekhane, Etkinlikler vb.) görmezden gel.
+   
+   A) KADRO: 
+      - Akademik ve idari personel bilgileri.
+      
+   B) HAKKIMIZDA:
+      - Okulun genel tanıtımı, tarihçesi ve yönetim bilgileri.
+      
+   C) BÖLÜMLER (EN ÖNEMLİ KISIM):
+      - Bölümleri listelerken mutlaka altındaki PROGRAMLARI da belirt.
+      - Bir bölüm hakkında bilgi verirken mutlaka o bölümün MİSYON ve VİZYON bilgilerini bul ve söyle.
+      - Programların içeriği ve amacı hakkında bilgi ver.
+
+3. YASAKLI KONULAR:
+   - "Duyurular", "Haberler", "Yemek Listesi", "Sınav Takvimi" gibi konulara BAKMA. Kullanıcı sorsa bile "Ben sadece Kadro, Hakkımızda ve Bölümler hakkında bilgi verebilirim, diğer konulara yetkim yok." de.
+
+4. ARAMA TAKTİĞİ:
+   - Google araması yaparken, aradığın konunun yanına mutlaka "site:balikesirmyo.balikesir.edu.tr" ekle.
+   - Bölüm arıyorsan örneğin şöyle ara: "Bilgisayar Teknolojileri Bölümü misyon vizyon site:balikesirmyo.balikesir.edu.tr"
+
+5. KAYNAK GÖSTER:
+   - Cevabının sonuna mutlaka bilgiyi bulduğun sayfanın linkini ekle.
 """
 
 # --- 3. MODELİ BAŞLAT ---
@@ -78,8 +101,15 @@ except:
 
 try:
     genai.configure(api_key=api_key)
+    
+    # Google Arama yetkisi
+    tools_list = [
+        {"google_search": {}} 
+    ]
+    
     model = genai.GenerativeModel(
         model_name='gemini-2.0-flash',
+        tools=tools_list,
         system_instruction=okul_bilgileri
     )
 except Exception as e:
@@ -147,12 +177,10 @@ if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
     st.session_state.messages = []
 
-# --- 6. YAN MENÜ (SADE) ---
+# --- 6. YAN MENÜ ---
 with st.sidebar:
     st.subheader("Menü")
-    
     uploaded_file = st.file_uploader("Görsel Ekle", type=["jpg", "png", "jpeg"])
-    
     current_image = None
     if uploaded_file:
         try:
@@ -174,7 +202,6 @@ with st.sidebar:
     for chat in reversed(load_history()):
         raw_title = chat.get("title", "Sohbet")
         btn_text = raw_title[:20] + "..." if len(raw_title) > 20 else raw_title
-        
         if st.button(btn_text, key=chat["id"], use_container_width=True):
             st.session_state.session_id = chat["id"]
             st.session_state.messages = chat["messages"]
@@ -185,7 +212,7 @@ with st.sidebar:
         st.session_state.messages = []
         st.rerun()
 
-# --- 7. ANA EKRAN (SADE) ---
+# --- 7. ANA EKRAN ---
 st.header("BAUN-MYO-AI Asistan")
 st.caption("MYO'nun Görsel, Sesli ve Metinsel Yapay Zekası")
 
@@ -198,17 +225,16 @@ for message in st.session_state.messages:
                 if img: st.image(img, width=300)
             except: pass
 
-# --- 8. GİRİŞ (İPUCU VE MESAJ KUTUSU) ---
+# --- 8. GİRİŞ ---
 audio_value = None
 if ses_aktif:
     st.write("Mikrofon:")
     audio_value = st.audio_input("Konuş")
 
-# İPUCU YAZISI (Tam yerinde)
 st.markdown(
     """
     <div style='text-align: center; color: gray; font-size: 12px; margin-bottom: 5px;'>
-    💡 <b>İpucu:</b> "Sınav tarihleri ne zaman?", "Yemekte ne var?" veya "Ders programı" diyebilirsin.
+    💡 <b>İpucu:</b> "Bilgisayar bölümü misyonu nedir?", "Akademik kadroda kimler var?" diyebilirsin.
     </div>
     """, 
     unsafe_allow_html=True
