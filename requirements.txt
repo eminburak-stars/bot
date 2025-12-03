@@ -2,4 +2,4 @@ streamlit
 google-generativeai
 SpeechRecognition
 gTTS
-Pillowgit
+Pillow

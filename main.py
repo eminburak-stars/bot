@@ -11,40 +11,45 @@ import speech_recognition as sr
 from gtts import gTTS
 import tempfile
 
-# --- 1. AYARLAR ---
+# --- 1. AYARLAR (İkon ve Menü Ayarı) ---
 st.set_page_config(
     page_title="BAUN-MYO-AI Asistan", 
-    page_icon="indir.jpeg", 
+    page_icon="indir.jpeg",  # <-- Senin ikon dosyanın adı
     layout="centered",
     initial_sidebar_state="auto"
 )
 
-# --- TASARIM (CSS) ---
+# --- TASARIM MÜDAHALESİ (FULL CSS) ---
 custom_style = """
 <style>
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
 header {visibility: hidden;}
 
+/* Mobilde üst boşluğu alalım */
 .block-container {
     padding-top: 2rem !important;
     padding-bottom: 2rem !important;
 }
 
+/* --- MENÜ BUTONU AYARI (Çizgiler Gitti) --- */
 [data-testid="stSidebarCollapsedControl"] {
     border: none !important;
     background-color: transparent !important;
-    color: #19191a !important;
+    color: #31333F !important;
 }
+/* Üzerine gelince de çizgi çıkmasın */
 [data-testid="stSidebarCollapsedControl"]:hover {
-    background-color: #19191a !important;
+    background-color: #f0f2f6 !important;
     border: none !important;
 }
 
+/* --- YAN MENÜ RENGİ --- */
 section[data-testid="stSidebar"] {
     background-color: #f0f2f6 !important;
 }
 
+/* Normal Butonları sadeleştir */
 .stButton button {
     border: 1px solid #e0e0e0;
     border-radius: 8px;
@@ -54,42 +59,27 @@ section[data-testid="stSidebar"] {
 """
 st.markdown(custom_style, unsafe_allow_html=True)
 
-# --- 2. OKUL BİLGİLERİ ---
+# --- 2. OKUL BİLGİLERİ (EMOJİ YASAK) ---
 okul_bilgileri = """
 Sen Balıkesir Üniversitesi Meslek Yüksekokulu (BAUN MYO) asistanısın.
 İsmin BAUN Asistan.
-
-TEMEL PRENSİPLER:
-1. Ciddi, sade ve net cevaplar ver.
-2. ASLA emoji kullanma.
-3. Samimi ol ama resmiyeti koru.
-
-İNTERNET VE ARAMA KURALLARI (ÇOK KRİTİK):
-1. HEDEF SİTE: Aramalarında ve cevaplarında SADECE "balikesirmyo.balikesir.edu.tr" adresini kaynak al.
-2. YASAKLI KONULAR: "Duyurular", "Haberler", "Yemek Listesi" gibi konulara BAKMA.
-3. İZİNLİ KONULAR: Sadece KADRO, HAKKIMIZDA ve BÖLÜMLER.
-4. ARAMA TAKTİĞİ: Aradığın konunun yanına mutlaka "site:balikesirmyo.balikesir.edu.tr" ekle.
-5. KAYNAK GÖSTER: Cevabının sonuna link ekle.
+Çok ciddi, sade ve net cevaplar ver.
+Cevaplarında ASLA emoji kullanma.
+Samimi ol ama cıvık olma. Sadece metin odaklı konuş.
+Tasarımcı gibi düşün, minimalist cevaplar ver.
 """
 
 # --- 3. MODELİ BAŞLAT ---
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
 except:
-    st.error("API Key bulunamadı. Lütfen Streamlit ayarlarından Secrets kısmını kontrol et.")
+    st.error("API Key bulunamadı.")
     st.stop()
 
 try:
     genai.configure(api_key=api_key)
-    
-    # HATA BURADAYDI ÇÖZÜLDÜ: Hata mesajının istediği gibi "google_search" kullandık.
-    tools_list = [
-        {"google_search": {}} 
-    ]
-    
     model = genai.GenerativeModel(
-        model_name='gemini-1.5-flash',
-        tools=tools_list,
+        model_name='gemini-2.0-flash',
         system_instruction=okul_bilgileri
     )
 except Exception as e:
@@ -157,10 +147,12 @@ if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
     st.session_state.messages = []
 
-# --- 6. YAN MENÜ ---
+# --- 6. YAN MENÜ (SADE) ---
 with st.sidebar:
     st.subheader("Menü")
+    
     uploaded_file = st.file_uploader("Görsel Ekle", type=["jpg", "png", "jpeg"])
+    
     current_image = None
     if uploaded_file:
         try:
@@ -182,6 +174,7 @@ with st.sidebar:
     for chat in reversed(load_history()):
         raw_title = chat.get("title", "Sohbet")
         btn_text = raw_title[:20] + "..." if len(raw_title) > 20 else raw_title
+        
         if st.button(btn_text, key=chat["id"], use_container_width=True):
             st.session_state.session_id = chat["id"]
             st.session_state.messages = chat["messages"]
@@ -192,7 +185,7 @@ with st.sidebar:
         st.session_state.messages = []
         st.rerun()
 
-# --- 7. ANA EKRAN ---
+# --- 7. ANA EKRAN (SADE) ---
 st.header("BAUN-MYO-AI Asistan")
 st.caption("MYO'nun Görsel, Sesli ve Metinsel Yapay Zekası")
 
@@ -205,16 +198,17 @@ for message in st.session_state.messages:
                 if img: st.image(img, width=300)
             except: pass
 
-# --- 8. GİRİŞ ---
+# --- 8. GİRİŞ (İPUCU VE MESAJ KUTUSU) ---
 audio_value = None
 if ses_aktif:
     st.write("Mikrofon:")
     audio_value = st.audio_input("Konuş")
 
+# İPUCU YAZISI (Tam yerinde)
 st.markdown(
     """
     <div style='text-align: center; color: gray; font-size: 12px; margin-bottom: 5px;'>
-    💡 <b>İpucu:</b> "Bilgisayar bölümü misyonu nedir?", "Akademik kadroda kimler var?" diyebilirsin.
+    💡 <b>İpucu:</b> "Sınav tarihleri ne zaman?", "Yemekte ne var?" veya "Ders programı" diyebilirsin.
     </div>
     """, 
     unsafe_allow_html=True
