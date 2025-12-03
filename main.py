@@ -14,12 +14,11 @@ import tempfile
 # --- 1. AYARLAR (SADE) ---
 st.set_page_config(
     page_title="BAUN-MYO-AI Asistan", 
-    page_icon="indir.jpeg",  # <--- Tırnak içinde resmin tam adını yazdık
+    page_icon="indir.jpeg",  # Senin resim dosyan
     layout="centered",
     initial_sidebar_state="auto"
 )
 
-# --- TASARIM MÜDAHALESİ (CSS) ---
 # --- TASARIM MÜDAHALESİ (CSS) ---
 custom_style = """
 <style>
@@ -27,40 +26,29 @@ custom_style = """
 footer {visibility: hidden;}
 header {visibility: hidden;}
 
-/* Ana sayfa boşluk ayarı */
+/* Mobilde üst boşluğu alalım */
 .block-container {
     padding-top: 2rem !important;
     padding-bottom: 2rem !important;
 }
 
-/* --- 1. SOL ÜST MENÜ BUTONU AYARI --- */
+/* Sol Üst Menü Butonunu Şeffaf Yap */
 [data-testid="stSidebarCollapsedControl"] {
-    border: none !important;  /* Çerçeve çizgisi kalktı */
-    background-color: transparent !important; /* Arkaplan şeffaf oldu */
-    color: #31333F !important; /* İkon rengi koyu gri (net görünsün diye) */
+    border: none !important;
+    background-color: transparent !important;
+    color: #31333F !important;
 }
-
-/* Mouse üzerine gelince de çizgi çıkmasın */
 [data-testid="stSidebarCollapsedControl"]:hover {
     background-color: #f0f2f6 !important;
     border: none !important;
 }
 
-/* --- 2. YAN MENÜ (SIDEBAR) RENK AYARI --- */
+/* Yan Menü Rengi */
 section[data-testid="stSidebar"] {
-    background-color: #f0f2f6 !important; /* Hafif Kül Rengi (Daha kapalı) */
-    /* Eğer daha da koyu gri istersen yukarıdaki kodu #e0e0e0 yapabilirsin */
+    background-color: #f0f2f6 !important;
 }
 
-/* Mesaj kutusunun oradaki ipucu yazısı için stil */
-.ipucu-kutu {
-    text-align: center;
-    color: gray;
-    font-size: 12px;
-    margin-bottom: 5px;
-}
-
-/* Normal Butonları sadeleştir */
+/* Butonları sadeleştir */
 .stButton button {
     border: 1px solid #e0e0e0;
     border-radius: 8px;
@@ -69,10 +57,8 @@ section[data-testid="stSidebar"] {
 </style>
 """
 st.markdown(custom_style, unsafe_allow_html=True)
-st.markdown(custom_style, unsafe_allow_html=True)
 
-# --- 2. OKUL BİLGİLERİ (EMOJİ YASAKLI VERSİYON) ---
-# Buradaki "Asla emoji kullanma" emri çok önemli
+# --- 2. OKUL BİLGİLERİ ---
 okul_bilgileri = """
 Sen Balıkesir Üniversitesi Meslek Yüksekokulu (BAUN MYO) asistanısın.
 İsmin BAUN Asistan.
@@ -164,7 +150,6 @@ if "session_id" not in st.session_state:
 with st.sidebar:
     st.subheader("Menü")
     
-    # Görsel Yükleme (Sade)
     uploaded_file = st.file_uploader("Görsel Ekle", type=["jpg", "png", "jpeg"])
     
     current_image = None
@@ -175,12 +160,8 @@ with st.sidebar:
         except:
             st.error("Görsel yüklenemedi")
 
-    # Boşluk bırak (Divider yerine text kullandık)
     st.text("")
-
-    # Ses Modu
     ses_aktif = st.toggle("Sesli Yanıt", value=False)
-
     st.text("")
 
     if st.button("Yeni Sohbet", use_container_width=True):
@@ -190,7 +171,6 @@ with st.sidebar:
     
     st.subheader("Geçmiş")
     for chat in reversed(load_history()):
-        # Başlık çok uzunsa kes
         raw_title = chat.get("title", "Sohbet")
         btn_text = raw_title[:20] + "..." if len(raw_title) > 20 else raw_title
         
@@ -206,10 +186,9 @@ with st.sidebar:
 
 # --- 7. ANA EKRAN (SADE) ---
 st.header("BAUN-MYO-AI Asistan")
-st.caption("MYO'nun  Görsel, Sesli ve Metinsel Yapay Zekası")
+st.caption("MYO'nun Görsel, Sesli ve Metinsel Yapay Zekası")
 
 for message in st.session_state.messages:
-    # Role iconlarını kaldırdık, default minimalist iconlar gelir
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
         if message.get("image"):
@@ -218,13 +197,24 @@ for message in st.session_state.messages:
                 if img: st.image(img, width=300)
             except: pass
 
-# --- 8. GİRİŞ ---
+# --- 8. GİRİŞ (İPUCU BURAYA EKLENDİ) ---
 audio_value = None
 if ses_aktif:
     st.write("Mikrofon:")
     audio_value = st.audio_input("Konuş")
 
-text_input = st.chat_input("Mesajınızı yazın...")  # Bu satır zaten vardı
+# İŞTE BURASI: Mesaj kutusunun tam üstüne ipucunu koyduk
+st.markdown(
+    """
+    <div style='text-align: center; color: gray; font-size: 12px; margin-bottom: 5px;'>
+    💡 <b>İpucu:</b> "Sınav tarihleri ne zaman?", "Yemekte ne var?" veya "Ders programı" diyebilirsin.
+    </div>
+    """, 
+    unsafe_allow_html=True
+)
+
+text_input = st.chat_input("Mesajınızı yazın...")  # Mesaj kutusu burada
+
 prompt = None
 if ses_aktif and audio_value:
     with st.spinner("Dinliyorum..."):
@@ -284,7 +274,6 @@ if prompt:
             "image": None
         })
         
-        # Kayıt İşlemleri
         current_history = load_history()
         chat_exists = False
         for chat in current_history:
