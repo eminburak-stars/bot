@@ -196,8 +196,18 @@ if ses_aktif:
     st.write("Mikrofon:")
     audio_value = st.audio_input("Konuş")
 
-text_input = st.chat_input("Mesajınızı yazın...")
+# --- İŞTE İPUCU YAZISI BURAYA ---
+# Yazıyı ortaladık ve biraz silik gri yaptık ki göz yormasın
+st.markdown(
+    """
+    <div style='text-align: center; color: gray; font-size: 12px; margin-bottom: 5px;'>
+     <b>İpucu:</b> "Balıkesir MYO ve YZO programı hakkında genel olarak soru sorunuz." diyebilirsin.
+    </div>
+    """, 
+    unsafe_allow_html=True
+)
 
+text_input = st.chat_input("Mesajınızı yazın...")  # Bu satır zaten vardı
 prompt = None
 if ses_aktif and audio_value:
     with st.spinner("Dinliyorum..."):
