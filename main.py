@@ -201,7 +201,7 @@ if ses_aktif:
 st.markdown(
     """
     <div style='text-align: center; color: gray; font-size: 12px; margin-bottom: 5px;'>
-     <b>İpucu:</b> "Balıkesir MYO ve YZO programı hakkında genel olarak soru sorunuz." diyebilirsin.
+     <b>İpucu:</b>Genel olarak Balıkesir MYO ve YZO programı hakkında soru sorunuz.
     </div>
     """, 
     unsafe_allow_html=True
