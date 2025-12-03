@@ -36,17 +36,17 @@ header {visibility: hidden;}
 [data-testid="stSidebarCollapsedControl"] {
     border: none !important;
     background-color: transparent !important;
-    color: #31333F !important;
+    color: #19191a !important;
 }
 /* Üzerine gelince de çizgi çıkmasın */
 [data-testid="stSidebarCollapsedControl"]:hover {
-    background-color: #f0f2f6 !important;
+    background-color: #19191a !important;
     border: none !important;
 }
 
 /* --- YAN MENÜ RENGİ --- */
 section[data-testid="stSidebar"] {
-    background-color: #f0f2f6 !important;
+    background-color: #19191a !important;
 }
 
 /* Normal Butonları sadeleştir */
