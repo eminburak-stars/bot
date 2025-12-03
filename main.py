@@ -20,20 +20,47 @@ st.set_page_config(
 )
 
 # --- TASARIM MÜDAHALESİ (CSS) ---
-# Emojiler gitti, gereksiz boşluklar alındı, footer gizlendi.
+# --- TASARIM MÜDAHALESİ (CSS) ---
 custom_style = """
 <style>
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
-header {visibility: hidden;} /* Üstteki renkli şeridi uçurduk */
+header {visibility: hidden;}
 
-/* Mobilde üst boşluğu alalım */
+/* Ana sayfa boşluk ayarı */
 .block-container {
     padding-top: 2rem !important;
     padding-bottom: 2rem !important;
 }
 
-/* Butonları sadeleştir */
+/* --- 1. SOL ÜST MENÜ BUTONU AYARI --- */
+[data-testid="stSidebarCollapsedControl"] {
+    border: none !important;  /* Çerçeve çizgisi kalktı */
+    background-color: transparent !important; /* Arkaplan şeffaf oldu */
+    color: #31333F !important; /* İkon rengi koyu gri (net görünsün diye) */
+}
+
+/* Mouse üzerine gelince de çizgi çıkmasın */
+[data-testid="stSidebarCollapsedControl"]:hover {
+    background-color: #f0f2f6 !important;
+    border: none !important;
+}
+
+/* --- 2. YAN MENÜ (SIDEBAR) RENK AYARI --- */
+section[data-testid="stSidebar"] {
+    background-color: #f0f2f6 !important; /* Hafif Kül Rengi (Daha kapalı) */
+    /* Eğer daha da koyu gri istersen yukarıdaki kodu #e0e0e0 yapabilirsin */
+}
+
+/* Mesaj kutusunun oradaki ipucu yazısı için stil */
+.ipucu-kutu {
+    text-align: center;
+    color: gray;
+    font-size: 12px;
+    margin-bottom: 5px;
+}
+
+/* Normal Butonları sadeleştir */
 .stButton button {
     border: 1px solid #e0e0e0;
     border-radius: 8px;
@@ -41,6 +68,7 @@ header {visibility: hidden;} /* Üstteki renkli şeridi uçurduk */
 }
 </style>
 """
+st.markdown(custom_style, unsafe_allow_html=True)
 st.markdown(custom_style, unsafe_allow_html=True)
 
 # --- 2. OKUL BİLGİLERİ (EMOJİ YASAKLI VERSİYON) ---
@@ -195,17 +223,6 @@ audio_value = None
 if ses_aktif:
     st.write("Mikrofon:")
     audio_value = st.audio_input("Konuş")
-
-# --- İŞTE İPUCU YAZISI BURAYA ---
-# Yazıyı ortaladık ve biraz silik gri yaptık ki göz yormasın
-st.markdown(
-    """
-    <div style='text-align: center; color: gray; font-size: 12px; margin-bottom: 5px;'>
-     <b>İpucu:</b>Genel olarak Balıkesir MYO ve YZO programı hakkında soru sorunuz.
-    </div>
-    """, 
-    unsafe_allow_html=True
-)
 
 text_input = st.chat_input("Mesajınızı yazın...")  # Bu satır zaten vardı
 prompt = None
