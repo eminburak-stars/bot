@@ -14,7 +14,7 @@ import tempfile
 # --- 1. AYARLAR (SADE) ---
 st.set_page_config(
     page_title="BAUN Asistan", 
-    page_icon="🤖",  # İstersen buraya emoji yerine "B" falan yazamazsın, icon şart ama daha sade robot yaptım.
+    page_icon="indir.jpeg",  # <--- Tırnak içinde resmin tam adını yazdık
     layout="centered",
     initial_sidebar_state="auto"
 )
