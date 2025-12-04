@@ -123,7 +123,7 @@ def base64_to_image(base64_str):
         if base64_str: return Image.open(io.BytesIO(base64.b64decode(base64_str)))
     except: return None
 
-# --- IPHONE İÇİN GİRİŞ (MIC) AYARI ---
+# --- IPHONE UYUMLU SES GİRİŞİ ---
 def sesten_yaziya(audio_bytes):
     r = sr.Recognizer()
     
@@ -150,8 +150,7 @@ def sesten_yaziya(audio_bytes):
         if os.path.exists(tmp_input_path): os.unlink(tmp_input_path)
         if os.path.exists(tmp_wav_path): os.unlink(tmp_wav_path)
 
-# --- IPHONE İÇİN ÇIKIŞ (HOPARLÖR) AYARI ---
-# Bu sefer BytesIO kullanıyoruz, dosya kaydetmiyoruz.
+# --- IPHONE UYUMLU SES ÇIKIŞI (RAM'de İşleme) ---
 def yazidan_sese_data(text):
     try:
         tts = gTTS(text=text, lang='tr')
@@ -313,19 +312,21 @@ if prompt:
             with st.chat_message("assistant", avatar="🤖"):
                 st.markdown(final_content_text)
                 if ses_aktif:
-                    # --- IPHONE İÇİN KESİN ÇÖZÜM: BASE64 GÖMME ---
+                    # --- SAFARI (IPHONE) İÇİN KESİN ÇÖZÜM ---
                     audio_bytes_io = yazidan_sese_data(final_content_text)
                     if audio_bytes_io:
-                        # 1. Sesi base64 metnine çevir
+                        # Base64 dönüşümü
                         b64 = base64.b64encode(audio_bytes_io.read()).decode()
-                        # 2. HTML Audio player oluştur
+                        
+                        # Safari 'audio/mpeg' ister, 'audio/mp3' değil!
+                        # preload="metadata" RAM kullanımını düşürür ve Safari sever.
                         md = f"""
-                            <audio controls preload="auto">
-                            <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
-                            Tarayıcınız sesi desteklemiyor.
+                            <audio controls preload="metadata">
+                            <source src="data:audio/mpeg;base64,{b64}" type="audio/mpeg">
                             </audio>
+                            <br>
+                            <a href="data:audio/mpeg;base64,{b64}" download="ses.mp3">⬇️ Sesi İndir (Çalmazsa tıkla)</a>
                             """
-                        # 3. Sayfaya HTML olarak bas (st.audio kullanmıyoruz)
                         st.markdown(md, unsafe_allow_html=True)
 
         st.session_state.messages.append({
