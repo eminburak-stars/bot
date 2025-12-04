@@ -14,14 +14,12 @@ import tempfile
 
 # --- 1. SAYFA AYARLARI ---
 st.set_page_config(
-    page_title="BAUN-MYO Asistan", 
-    page_icon="🎓",  
+    page_title="BAUN-MYO Asistan",
     layout="centered",
     initial_sidebar_state="expanded"
 )
 
 # --- 2. PROFESYONEL TASARIM (CSS) ---
-# Burası sitenin makyaj çantası. Renkler, fontlar, yuvarlak köşeler burada.
 custom_style = """
 <style>
 /* Fontu Google'dan çekelim (Inter Fontu) */
@@ -89,12 +87,6 @@ section[data-testid="stSidebar"] {
 /* Kullanıcı mesajındaki metin rengini zorla beyaz yap */
 [data-testid="stChatMessage"]:nth-of-type(even) * {
     color: white !important;
-}
-
-/* Avatar ikonlarını biraz büyütelim */
-[data-testid="stChatMessage"] .st-emotion-cache-1p1m4ay {
-    width: 45px;
-    height: 45px;
 }
 
 /* Mesaj Giriş Kutusu (Chat Input) */
@@ -214,12 +206,9 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 with st.sidebar:
-    st.title("BAUN MYO")
+    st.title("BAUN MYO AI")
     st.markdown("---")
     
-    # ID'yi şık bir şekilde göster
-    st.code(f"ID: {st.session_state.session_id[:6]}...", language="text")
-
     st.subheader("İşlemler")
     
     uploaded_file = st.file_uploader("Görsel Yükle", type=["jpg", "png", "jpeg"])
@@ -227,45 +216,42 @@ with st.sidebar:
     if uploaded_file:
         try:
             current_image = Image.open(uploaded_file)
-            st.success("Görsel eklendi!")
+            st.success("Görsel eklendi.")
             st.image(current_image, use_container_width=True)
         except: st.error("Hata")
 
     st.markdown("---")
-    ses_aktif = st.toggle("🎤 Sesli Yanıt", value=False)
+    ses_aktif = st.toggle("Sesli Yanıt", value=False)
     
-    if st.button("➕ Yeni Sohbet", use_container_width=True):
+    if st.button("Yeni Sohbet", use_container_width=True):
         st.session_state.messages = []
         st.session_state.current_chat_id = str(uuid.uuid4())
         st.rerun()
     
-    st.markdown("### 🕒 Geçmiş Sohbetler")
+    st.markdown("### Geçmiş Sohbetler")
     for chat in reversed(load_history()):
         raw_title = chat.get("title", "Sohbet")
-        # Başlığı kısalt
         display_title = (raw_title[:22] + '..') if len(raw_title) > 22 else raw_title
         
-        if st.button(f"💬 {display_title}", key=chat["id"], use_container_width=True):
+        if st.button(f"{display_title}", key=chat["id"], use_container_width=True):
             st.session_state.messages = chat["messages"]
             st.session_state.current_chat_id = chat["id"]
             st.rerun()
             
     st.markdown("---")
-    if st.button("🗑️ Geçmişi Temizle", type="primary", use_container_width=True):
+    if st.button("Geçmişi Temizle", type="primary", use_container_width=True):
         if os.path.exists(USER_HISTORY_FILE): os.remove(USER_HISTORY_FILE)
         st.session_state.messages = []
         st.rerun()
 
 # --- 8. ANA EKRAN ---
 st.markdown("<h1 style='text-align: center; color: white;'>BAUN-MYO AI Asistan</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: gray;'>Size nasıl yardımcı olabilirim?</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: gray;'>MYO AI'ye Sorun</p>", unsafe_allow_html=True)
 
 # Mesajları Döngüyle Yazdır
 for message in st.session_state.messages:
-    # Avatar seçimi
-    avatar_icon = "👤" if message["role"] == "user" else "🤖"
-    
-    with st.chat_message(message["role"], avatar=avatar_icon):
+    # Avatar kullanmıyoruz, Streamlit varsayılanı kullansın (Sade)
+    with st.chat_message(message["role"]):
         st.markdown(message["content"])
         if message.get("image"):
             try:
@@ -276,7 +262,7 @@ for message in st.session_state.messages:
 # --- 9. GİRİŞ ALANI ---
 audio_value = None
 if ses_aktif:
-    st.write("🎙️ **Mikrofon:**")
+    st.write("**Mikrofon:**")
     audio_value = st.audio_input("Konuş")
 
 text_input = st.chat_input("Mesajınızı buraya yazın...") 
@@ -285,7 +271,7 @@ prompt = None
 if ses_aktif and audio_value:
     with st.spinner("Sesiniz işleniyor..."):
         prompt = sesten_yaziya(audio_value.read())
-        if not prompt: st.warning("Ses anlaşılamadı, tekrar dener misin?")
+        if not prompt: st.warning("Ses anlaşılamadı.")
 elif text_input:
     prompt = text_input
 
@@ -298,7 +284,7 @@ if prompt:
         saved_image_for_api = current_image.copy()
     
     # Kullanıcı mesajını hemen göster
-    with st.chat_message("user", avatar="👤"):
+    with st.chat_message("user"):
         st.markdown(prompt)
         if saved_image_for_api: st.image(saved_image_for_api, width=300)
     
@@ -325,7 +311,7 @@ if prompt:
             bot_reply = response.text
         
         # Bot cevabını göster
-        with st.chat_message("assistant", avatar="🤖"):
+        with st.chat_message("assistant"):
             st.markdown(bot_reply)
             if ses_aktif:
                 audio_file = yazidan_sese(bot_reply)
