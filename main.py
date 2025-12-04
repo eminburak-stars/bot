@@ -49,13 +49,6 @@ if not os.path.exists(SESSION_FOLDER):
 def temizlik_yap(dakika=30):
     su_an = time.time()
     try:
-        # Eski mp3 dosyalarını temizle
-        for dosya in os.listdir("."):
-            if dosya.endswith(".mp3") and dosya.startswith("ses_"):
-                 if (su_an - os.path.getmtime(dosya)) > (dakika * 60):
-                    try: os.remove(dosya)
-                    except: pass
-        # Session dosyalarını temizle
         for dosya in os.listdir(SESSION_FOLDER):
             if dosya.endswith(".json"):
                 dosya_yolu = os.path.join(SESSION_FOLDER, dosya)
@@ -157,17 +150,15 @@ def sesten_yaziya(audio_bytes):
         if os.path.exists(tmp_input_path): os.unlink(tmp_input_path)
         if os.path.exists(tmp_wav_path): os.unlink(tmp_wav_path)
 
-# --- GARANTİLİ SES KAYDI ---
-def yazidan_sese_kaydet(text):
+# --- BASE64 SES ÇIKIŞI (HATA VERMEZ) ---
+def text_to_audio_base64(text):
     try:
-        # Rastgele isimle kaydet ki iPhone eskiyi hatırlamasın
-        dosya_adi = f"ses_{uuid.uuid4()}.mp3"
         tts = gTTS(text=text, lang='tr')
-        tts.save(dosya_adi)
-        return dosya_adi
-    except Exception as e:
-        st.error(f"Ses oluşturma hatası: {e}")
-        return None
+        fp = io.BytesIO()
+        tts.write_to_fp(fp)
+        fp.seek(0)
+        return base64.b64encode(fp.read()).decode()
+    except: return None
 
 # GÖRSEL OLUŞTURMA (Ressam)
 def gorsel_olustur(prompt_text):
@@ -321,25 +312,31 @@ if prompt:
             with st.chat_message("assistant", avatar="🤖"):
                 st.markdown(final_content_text)
                 
+                # --- BURASI DEĞİŞTİ: st.audio YOK, SAF HTML VAR ---
                 if ses_aktif:
-                    # 1. Dosyayı diske kaydet
-                    ses_yolu = yazidan_sese_kaydet(final_content_text)
-                    
-                    if ses_yolu:
-                        # 2. Dosyayı binary (byte) olarak oku
-                        with open(ses_yolu, "rb") as f:
-                            audio_data = f.read()
+                    b64_sound = text_to_audio_base64(final_content_text)
+                    if b64_sound:
+                        # 1. HTML5 Ses Oynatıcı (Safari uyumlu)
+                        audio_html = f"""
+                        <audio controls style="width: 100%; border-radius: 10px; margin-top: 10px;">
+                            <source src="data:audio/mp3;base64,{b64_sound}" type="audio/mp3">
+                            Tarayıcı desteklemiyor.
+                        </audio>
+                        """
+                        st.markdown(audio_html, unsafe_allow_html=True)
                         
-                        # A. Standart Oynatıcıyı Dene (Belki çalışır)
-                        st.audio(audio_data, format='audio/mpeg', start_time=0)
-                        
-                        # B. MANUEL LİNK (ATOM BOMBASI YÖNTEMİ) 
-                        # Bu linke tıklayınca ses kesin açılır.
-                        b64 = base64.b64encode(audio_data).decode()
-                        link = f'<a href="data:audio/mpeg;base64,{b64}" download="asistan.mp3" style="color:#00ff00; font-weight:bold; font-size:18px; text-decoration:none; border:1px solid #00ff00; padding:10px; border-radius:10px; display:block; text-align:center; margin-top:10px;">🔊 SESİ DİNLEMEK İÇİN TIKLA (GARANTİ)</a>'
-                        st.markdown(link, unsafe_allow_html=True)
+                        # 2. GARANTİ LİNK (Eğer üstteki görünmezse buna bas)
+                        link_html = f"""
+                        <br>
+                        <a href="data:audio/mp3;base64,{b64_sound}" target="_blank" 
+                           style="display: inline-block; padding: 10px 20px; background-color: #28a745; 
+                           color: white; text-decoration: none; border-radius: 8px; font-weight: bold;">
+                           🔊 SESİ OYNAT (Çalışmazsa Tıkla)
+                        </a>
+                        """
+                        st.markdown(link_html, unsafe_allow_html=True)
                     else:
-                        st.warning("Ses oluşturulamadı.")
+                         st.warning("Ses oluşturulamadı.")
 
         st.session_state.messages.append({
             "role": "assistant", "content": final_content_text, "image": generated_image_base64
