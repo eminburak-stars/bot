@@ -37,6 +37,15 @@ section[data-testid="stSidebar"] {background-color: #161b22 !important; border-r
 [data-testid="stChatMessage"]:nth-of-type(even) {background-color: #1f6feb; color: white; border-radius: 20px 0px 20px 20px; padding: 15px; margin-bottom: 10px; border: none;}
 [data-testid="stChatMessage"]:nth-of-type(even) * {color: white !important;}
 .stChatInputContainer textarea {background-color: #161b22; color: white; border: 1px solid #30363d; border-radius: 12px;}
+
+/* SES OYNATICI STİLİ */
+audio {
+    width: 100%;
+    height: 40px;
+    margin-top: 10px;
+    border-radius: 20px;
+    background-color: #f1f3f4; 
+}
 </style>
 """
 st.markdown(custom_style, unsafe_allow_html=True)
@@ -150,16 +159,19 @@ def sesten_yaziya(audio_bytes):
         if os.path.exists(tmp_input_path): os.unlink(tmp_input_path)
         if os.path.exists(tmp_wav_path): os.unlink(tmp_wav_path)
 
-# --- SES ÇIKIŞI (Stabil Yöntem) ---
-def yazidan_sese(text):
+# --- SAĞLAM SES OLUŞTURMA FONKSİYONU ---
+def metni_sese_cevir_base64(text):
     try:
+        # Sesi hafızada oluştur
         tts = gTTS(text=text, lang='tr')
         fp = io.BytesIO()
         tts.write_to_fp(fp)
         fp.seek(0)
-        return fp
+        
+        # Base64'e çevir (HTML içine gömmek için)
+        b64 = base64.b64encode(fp.read()).decode()
+        return b64
     except Exception as e:
-        st.error(f"Ses oluşturma hatası: {e}")
         return None
 
 # GÖRSEL OLUŞTURMA (Ressam)
@@ -314,15 +326,29 @@ if prompt:
             with st.chat_message("assistant", avatar="🤖"):
                 st.markdown(final_content_text)
                 if ses_aktif:
-                    # --- NATIVE STREAMLIT OYNATICI (Benzersiz KEY ile) ---
-                    # Bu sayede iPhone önbellek hatası vermez, her seferinde yeni ses yükler.
-                    audio_bytes_io = yazidan_sese(final_content_text)
-                    if audio_bytes_io:
-                        # KEY parametresi çok kritik: Her seste benzersiz bir kimlik veriyoruz.
-                        unique_id = f"audio_{uuid.uuid4()}"
-                        st.audio(audio_bytes_io, format='audio/mpeg', autoplay=False, start_time=0)
-                    else:
-                        st.warning("Ses dosyası oluşturulamadı (İnternet bağlantını kontrol et).")
+                    # --- IPHONE İÇİN KESİN ÇÖZÜM V3 ---
+                    try:
+                        b64_sound = metni_sese_cevir_base64(final_content_text)
+                        if b64_sound:
+                            # HTML Oynatıcı - Kabak gibi görünmesi için CSS eklendi
+                            # Type audio/mp3 olarak ayarlandı (Safari sever)
+                            md = f"""
+                            <div style="background-color: #f0f2f6; padding: 10px; border-radius: 10px; margin-top: 10px;">
+                                <audio controls style="width: 100%;">
+                                    <source src="data:audio/mp3;base64,{b64_sound}" type="audio/mp3">
+                                </audio>
+                                <div style="text-align: center; margin-top: 5px;">
+                                    <a href="data:audio/mp3;base64,{b64_sound}" download="asistan_sesi.mp3" style="color: #31333F; text-decoration: none; font-size: 12px;">
+                                        ⬇️ Oynatıcı çalışmazsa sesi indirmek için tıkla
+                                    </a>
+                                </div>
+                            </div>
+                            """
+                            st.markdown(md, unsafe_allow_html=True)
+                        else:
+                            st.warning("Ses oluşturulamadı.")
+                    except Exception as e:
+                        st.error(f"Ses hatası: {e}")
 
         st.session_state.messages.append({
             "role": "assistant", "content": final_content_text, "image": generated_image_base64
