@@ -49,18 +49,11 @@ if not os.path.exists(SESSION_FOLDER):
 def temizlik_yap(dakika=30):
     su_an = time.time()
     try:
-        # Json dosyalarını temizle
         for dosya in os.listdir(SESSION_FOLDER):
             if dosya.endswith(".json"):
                 dosya_yolu = os.path.join(SESSION_FOLDER, dosya)
                 if (su_an - os.path.getmtime(dosya_yolu)) > (dakika * 60):
                     try: os.remove(dosya_yolu)
-                    except: pass
-        # Eski ses dosyalarını da temizle (iPhone için oluşturduklarımızı)
-        for dosya in os.listdir("."):
-            if dosya.startswith("ses_") and dosya.endswith(".mp3"):
-                 if (su_an - os.path.getmtime(dosya)) > (dakika * 60):
-                    try: os.remove(dosya)
                     except: pass
     except: pass
 
@@ -130,7 +123,7 @@ def base64_to_image(base64_str):
         if base64_str: return Image.open(io.BytesIO(base64.b64decode(base64_str)))
     except: return None
 
-# --- IPHONE UYUMLU SES GİRİŞİ ---
+# --- IPHONE İÇİN GİRİŞ (MIC) AYARI ---
 def sesten_yaziya(audio_bytes):
     r = sr.Recognizer()
     
@@ -157,15 +150,15 @@ def sesten_yaziya(audio_bytes):
         if os.path.exists(tmp_input_path): os.unlink(tmp_input_path)
         if os.path.exists(tmp_wav_path): os.unlink(tmp_wav_path)
 
-# --- IPHONE UYUMLU SES ÇIKIŞI (BU KISIM DEĞİŞTİ) ---
-def yazidan_sese(text):
+# --- IPHONE İÇİN ÇIKIŞ (HOPARLÖR) AYARI ---
+# Bu sefer BytesIO kullanıyoruz, dosya kaydetmiyoruz.
+def yazidan_sese_data(text):
     try:
-        # iPhone için bellekte değil, diskte dosya oluşturuyoruz
-        # Her oturum için benzersiz bir isim veriyoruz
-        dosya_adi = f"ses_{st.session_state.session_id}.mp3"
         tts = gTTS(text=text, lang='tr')
-        tts.save(dosya_adi)
-        return dosya_adi
+        fp = io.BytesIO()
+        tts.write_to_fp(fp)
+        fp.seek(0)
+        return fp
     except: return None
 
 # GÖRSEL OLUŞTURMA (Ressam)
@@ -320,11 +313,20 @@ if prompt:
             with st.chat_message("assistant", avatar="🤖"):
                 st.markdown(final_content_text)
                 if ses_aktif:
-                    # Burada artık dosya yolu (string) geliyor, bytes değil.
-                    audio_file_path = yazidan_sese(final_content_text)
-                    if audio_file_path:
-                        # iPhone için autoplay KESİNLİKLE KAPALI olmalı
-                        st.audio(audio_file_path, format='audio/mpeg', autoplay=False)
+                    # --- IPHONE İÇİN KESİN ÇÖZÜM: BASE64 GÖMME ---
+                    audio_bytes_io = yazidan_sese_data(final_content_text)
+                    if audio_bytes_io:
+                        # 1. Sesi base64 metnine çevir
+                        b64 = base64.b64encode(audio_bytes_io.read()).decode()
+                        # 2. HTML Audio player oluştur
+                        md = f"""
+                            <audio controls preload="auto">
+                            <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
+                            Tarayıcınız sesi desteklemiyor.
+                            </audio>
+                            """
+                        # 3. Sayfaya HTML olarak bas (st.audio kullanmıyoruz)
+                        st.markdown(md, unsafe_allow_html=True)
 
         st.session_state.messages.append({
             "role": "assistant", "content": final_content_text, "image": generated_image_base64
