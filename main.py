@@ -1,7 +1,7 @@
 import streamlit as st
 import google.generativeai as genai
-import json
-import os
+import sqlite3
+import bcrypt
 import uuid
 from datetime import datetime
 from PIL import Image
@@ -11,7 +11,7 @@ import speech_recognition as sr
 from gtts import gTTS
 import tempfile
 
-# --- 1. AYARLAR (SADE) ---
+# --- 1. AYARLAR ---
 st.set_page_config(
     page_title="BAUN-MYO-AI Asistan", 
     page_icon="indir.jpeg",  
@@ -19,86 +19,188 @@ st.set_page_config(
     initial_sidebar_state="auto"
 )
 
-# --- TASARIM MÜDAHALESİ (CSS) ---
+# --- CSS ---
 custom_style = """
 <style>
-/* Header'ı ve 3 noktayı GİZLEMİYORUZ artık. */
-/* Sadece footer (alttaki 'Made with Streamlit' yazısı) gizli kalsın */
 footer {visibility: hidden;}
-
-/* Header'ın arka planını şeffaf yapalım ki tasarımınla bütünleşsin */
-header {
-    background-color: transparent !important;
-}
-
-/* Mobilde içerik header'ın altında kalmasın diye boşluğu ayarladık */
-.block-container {
-    padding-top: 3rem !important;
-    padding-bottom: 2rem !important;
-}
-
-/* --- SENİN ÖZEL RENK AYARLARIN (DOKUNMADIM) --- */
-
-/* Yan Menü Rengi */
-section[data-testid="stSidebar"] {
-    background-color: #19191a !important;
-}
-
-/* Yan menüdeki kapatma/açma butonunun rengi (görünür olması için) */
-[data-testid="stSidebarCollapsedControl"] {
-    color: #19191a !important;
-}
-
-/* Butonları sadeleştir */
-.stButton button {
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
-    background-color: transparent;
-}
+header {background-color: transparent !important;}
+.block-container {padding-top: 3rem !important; padding-bottom: 2rem !important;}
+section[data-testid="stSidebar"] {background-color: #19191a !important;}
+[data-testid="stSidebarCollapsedControl"] {color: #19191a !important;}
+.stButton button {border: 1px solid #e0e0e0; border-radius: 8px; background-color: transparent;}
 </style>
 """
 st.markdown(custom_style, unsafe_allow_html=True)
 
-# --- 2. OKUL BİLGİLERİ ---
-okul_bilgileri = """
-Sen Balıkesir Üniversitesi Meslek Yüksekokulu (BAUN MYO) asistanısın.
-İsmin BAUN Asistan.
-Çok ciddi, sade ve net cevaplar ver.
-Cevaplarında ASLA emoji kullanma.
-Samimi ol ama cıvık olma. Sadece metin odaklı konuş.
-Tasarımcı gibi düşün, minimalist cevaplar ver.
-"""
+# --- 2. VERİTABANI FONKSİYONLARI ---
+DB_FILE = "sohbetler.db"
 
-# --- 3. MODELİ BAŞLAT ---
-try:
-    api_key = st.secrets["GOOGLE_API_KEY"]
-except:
-    st.error("API Key bulunamadı.")
-    st.stop()
+def init_db():
+    """Veritabanını başlat"""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kullanici_adi TEXT UNIQUE NOT NULL,
+            sifre_hash TEXT NOT NULL,
+            olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS sohbetler (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            session_id TEXT NOT NULL,
+            baslik TEXT,
+            olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    ''')
+    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS mesajlar (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sohbet_id INTEGER NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            image_base64 TEXT,
+            tarih DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (sohbet_id) REFERENCES sohbetler(id)
+        )
+    ''')
+    
+    conn.commit()
+    conn.close()
 
-try:
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(
-        model_name='gemini-2.0-flash',
-        system_instruction=okul_bilgileri
-    )
-except Exception as e:
-    st.error(f"Bağlantı hatası: {e}")
-    st.stop()
-
-# --- 4. GEÇMİŞ YÖNETİMİ ---
-HISTORY_FILE = "sohbet_gecmisi.json"
-
-def load_history():
-    if not os.path.exists(HISTORY_FILE): return []
+def kayit_ol(kullanici_adi, sifre):
+    """Yeni kullanıcı kaydı"""
     try:
-        with open(HISTORY_FILE, "r", encoding="utf-8") as f: return json.load(f)
-    except: return []
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        
+        sifre_hash = bcrypt.hashpw(sifre.encode('utf-8'), bcrypt.gensalt())
+        cursor.execute(
+            "INSERT INTO users (kullanici_adi, sifre_hash) VALUES (?, ?)",
+            (kullanici_adi, sifre_hash)
+        )
+        
+        conn.commit()
+        conn.close()
+        return True, "Kayıt başarılı!"
+    except sqlite3.IntegrityError:
+        return False, "Bu kullanıcı adı zaten var."
+    except Exception as e:
+        return False, f"Hata: {e}"
 
-def save_history(history):
-    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(history, f, ensure_ascii=False, indent=4)
+def giris_yap(kullanici_adi, sifre):
+    """Kullanıcı girişi"""
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        
+        cursor.execute(
+            "SELECT id, sifre_hash FROM users WHERE kullanici_adi = ?",
+            (kullanici_adi,)
+        )
+        result = cursor.fetchone()
+        conn.close()
+        
+        if result:
+            user_id, db_hash = result
+            if bcrypt.checkpw(sifre.encode('utf-8'), db_hash):
+                return True, user_id, "Giriş başarılı!"
+            else:
+                return False, None, "Şifre yanlış."
+        else:
+            return False, None, "Kullanıcı bulunamadı."
+    except Exception as e:
+        return False, None, f"Hata: {e}"
 
+def sohbet_kaydet(user_id, session_id, baslik, mesajlar):
+    """Sohbeti veritabanına kaydet"""
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        
+        # Sohbet var mı kontrol et
+        cursor.execute(
+            "SELECT id FROM sohbetler WHERE session_id = ?",
+            (session_id,)
+        )
+        result = cursor.fetchone()
+        
+        if result:
+            sohbet_id = result[0]
+            # Mevcut mesajları sil (güncellemek için)
+            cursor.execute("DELETE FROM mesajlar WHERE sohbet_id = ?", (sohbet_id,))
+        else:
+            # Yeni sohbet oluştur
+            cursor.execute(
+                "INSERT INTO sohbetler (user_id, session_id, baslik) VALUES (?, ?, ?)",
+                (user_id, session_id, baslik)
+            )
+            sohbet_id = cursor.lastrowid
+        
+        # Mesajları ekle
+        for msg in mesajlar:
+            cursor.execute(
+                "INSERT INTO mesajlar (sohbet_id, role, content, image_base64) VALUES (?, ?, ?, ?)",
+                (sohbet_id, msg["role"], msg["content"], msg.get("image"))
+            )
+        
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        st.error(f"Kayıt hatası: {e}")
+
+def sohbetleri_yukle(user_id):
+    """Kullanıcının sohbetlerini yükle"""
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        
+        cursor.execute(
+            "SELECT id, session_id, baslik, olusturma_tarihi FROM sohbetler WHERE user_id = ? ORDER BY olusturma_tarihi DESC",
+            (user_id,)
+        )
+        sohbetler = cursor.fetchall()
+        conn.close()
+        
+        return sohbetler
+    except:
+        return []
+
+def mesajlari_yukle(session_id):
+    """Belirli bir sohbetin mesajlarını yükle"""
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        
+        cursor.execute(
+            "SELECT id FROM sohbetler WHERE session_id = ?",
+            (session_id,)
+        )
+        result = cursor.fetchone()
+        
+        if not result:
+            return []
+        
+        sohbet_id = result[0]
+        cursor.execute(
+            "SELECT role, content, image_base64 FROM mesajlar WHERE sohbet_id = ? ORDER BY tarih",
+            (sohbet_id,)
+        )
+        mesajlar = cursor.fetchall()
+        conn.close()
+        
+        return [{"role": m[0], "content": m[1], "image": m[2]} for m in mesajlar]
+    except:
+        return []
+
+# --- 3. YARDIMCI FONKSİYONLAR ---
 def image_to_base64(image):
     try:
         buffered = io.BytesIO()
@@ -114,13 +216,11 @@ def base64_to_image(base64_str):
     except:
         return None
 
-# --- 5. SES İŞLEMLERİ ---
 def sesten_yaziya(audio_bytes):
     r = sr.Recognizer()
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_audio:
         tmp_audio.write(audio_bytes)
         tmp_audio_path = tmp_audio.name
-
     try:
         with sr.AudioFile(tmp_audio_path) as source:
             audio_data = r.record(source)
@@ -142,17 +242,104 @@ def yazidan_sese(text):
     except:
         return None
 
-# --- SESSION ---
+# --- 4. VERİTABANINI BAŞLAT ---
+init_db()
+
+# --- 5. SESSION STATE ---
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.user_id = None
+    st.session_state.kullanici_adi = None
+
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
     st.session_state.messages = []
 
-# --- 6. YAN MENÜ ---
+# --- 6. LOGİN/KAYDOL EKRANI ---
+if not st.session_state.logged_in:
+    st.title("🎓 BAUN-MYO-AI Asistan")
+    st.caption("Giriş yapın ya da kayıt olun")
+    
+    tab1, tab2 = st.tabs(["Giriş Yap", "Kaydol"])
+    
+    with tab1:
+        st.subheader("Giriş Yap")
+        giris_kullanici = st.text_input("Kullanıcı Adı", key="giris_kullanici")
+        giris_sifre = st.text_input("Şifre", type="password", key="giris_sifre")
+        
+        if st.button("Giriş Yap", use_container_width=True):
+            if giris_kullanici and giris_sifre:
+                basarili, user_id, mesaj = giris_yap(giris_kullanici, giris_sifre)
+                if basarili:
+                    st.session_state.logged_in = True
+                    st.session_state.user_id = user_id
+                    st.session_state.kullanici_adi = giris_kullanici
+                    st.success(mesaj)
+                    st.rerun()
+                else:
+                    st.error(mesaj)
+            else:
+                st.warning("Tüm alanları doldurun.")
+    
+    with tab2:
+        st.subheader("Kaydol")
+        kayit_kullanici = st.text_input("Kullanıcı Adı", key="kayit_kullanici")
+        kayit_sifre = st.text_input("Şifre", type="password", key="kayit_sifre")
+        kayit_sifre2 = st.text_input("Şifre Tekrar", type="password", key="kayit_sifre2")
+        
+        if st.button("Kaydol", use_container_width=True):
+            if kayit_kullanici and kayit_sifre and kayit_sifre2:
+                if kayit_sifre != kayit_sifre2:
+                    st.error("Şifreler eşleşmiyor.")
+                elif len(kayit_sifre) < 4:
+                    st.error("Şifre en az 4 karakter olmalı.")
+                else:
+                    basarili, mesaj = kayit_ol(kayit_kullanici, kayit_sifre)
+                    if basarili:
+                        st.success(mesaj + " Şimdi giriş yapabilirsiniz.")
+                    else:
+                        st.error(mesaj)
+            else:
+                st.warning("Tüm alanları doldurun.")
+    
+    st.stop()
+
+# --- 7. API AYARLARI ---
+okul_bilgileri = """
+Sen Balıkesir Üniversitesi Meslek Yüksekokulu (BAUN MYO) asistanısın.
+İsmin BAUN Asistan.
+Çok ciddi, sade ve net cevaplar ver.
+Cevaplarında ASLA emoji kullanma.
+Samimi ol ama cıvık olma. Sadece metin odaklı konuş.
+Tasarımcı gibi düşün, minimalist cevaplar ver.
+"""
+
+try:
+    api_key = st.secrets["GOOGLE_API_KEY"]
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel(
+        model_name='gemini-2.0-flash',
+        system_instruction=okul_bilgileri
+    )
+except Exception as e:
+    st.error(f"API Hatası: {e}")
+    st.stop()
+
+# --- 8. YAN MENÜ ---
 with st.sidebar:
+    st.subheader(f"👤 {st.session_state.kullanici_adi}")
+    
+    if st.button("🚪 Çıkış Yap", use_container_width=True):
+        st.session_state.logged_in = False
+        st.session_state.user_id = None
+        st.session_state.kullanici_adi = None
+        st.session_state.messages = []
+        st.rerun()
+    
+    st.divider()
     st.subheader("Menü")
     
     uploaded_file = st.file_uploader("Görsel Ekle", type=["jpg", "png", "jpeg"])
-    
     current_image = None
     if uploaded_file:
         try:
@@ -160,32 +347,29 @@ with st.sidebar:
             st.image(current_image, caption='Görsel Hazır', use_container_width=True)
         except:
             st.error("Görsel yüklenemedi")
-
+    
     st.text("")
     ses_aktif = st.toggle("Sesli Yanıt", value=False)
     st.text("")
-
+    
     if st.button("Yeni Sohbet", use_container_width=True):
         st.session_state.session_id = str(uuid.uuid4())
         st.session_state.messages = []
         st.rerun()
     
     st.subheader("Geçmiş")
-    for chat in reversed(load_history()):
-        raw_title = chat.get("title", "Sohbet")
-        btn_text = raw_title[:20] + "..." if len(raw_title) > 20 else raw_title
+    sohbetler = sohbetleri_yukle(st.session_state.user_id)
+    
+    for sohbet in sohbetler:
+        sohbet_id, session_id, baslik, tarih = sohbet
+        btn_text = baslik[:20] + "..." if len(baslik) > 20 else baslik
         
-        if st.button(btn_text, key=chat["id"], use_container_width=True):
-            st.session_state.session_id = chat["id"]
-            st.session_state.messages = chat["messages"]
+        if st.button(btn_text, key=session_id, use_container_width=True):
+            st.session_state.session_id = session_id
+            st.session_state.messages = mesajlari_yukle(session_id)
             st.rerun()
-            
-    if st.button("Geçmişi Temizle"):
-        if os.path.exists(HISTORY_FILE): os.remove(HISTORY_FILE)
-        st.session_state.messages = []
-        st.rerun()
 
-# --- 7. ANA EKRAN ---
+# --- 9. ANA EKRAN ---
 st.header("BAUN-MYO-AI Asistan")
 st.caption("MYO'nun Görsel, Sesli ve Metinsel Yapay Zekası")
 
@@ -198,14 +382,15 @@ for message in st.session_state.messages:
                 if img: st.image(img, width=300)
             except: pass
 
-# --- 8. GİRİŞ ---
+# --- 10. GİRİŞ ---
 audio_value = None
 if ses_aktif:
     st.write("Mikrofon:")
     audio_value = st.audio_input("Konuş")
 
-text_input = st.chat_input("Mesajınızı yazın...") 
+text_input = st.chat_input("Mesajınızı yazın...")
 prompt = None
+
 if ses_aktif and audio_value:
     with st.spinner("Dinliyorum..."):
         prompt = sesten_yaziya(audio_value.read())
@@ -214,7 +399,7 @@ if ses_aktif and audio_value:
 elif text_input:
     prompt = text_input
 
-# --- 9. CEVAP ---
+# --- 11. CEVAP ---
 if prompt:
     saved_image_base64 = None
     saved_image_for_api = None
@@ -228,22 +413,22 @@ if prompt:
             st.image(saved_image_for_api, width=300)
     
     st.session_state.messages.append({
-        "role": "user", 
+        "role": "user",
         "content": prompt,
         "image": saved_image_base64
     })
-
+    
     try:
         with st.spinner('...'):
             chat_history_text = []
             for m in st.session_state.messages[:-1]:
                 chat_history_text.append({
-                    "role": "user" if m["role"] == "user" else "model", 
+                    "role": "user" if m["role"] == "user" else "model",
                     "parts": [m["content"]]
                 })
             
             chat_session = model.start_chat(history=chat_history_text)
-
+            
             if saved_image_for_api:
                 response = chat_session.send_message([prompt, saved_image_for_api])
             else:
@@ -257,31 +442,21 @@ if prompt:
                 audio_file = yazidan_sese(bot_reply)
                 if audio_file:
                     st.audio(audio_file, format='audio/mp3', autoplay=True)
-
+        
         st.session_state.messages.append({
-            "role": "assistant", 
+            "role": "assistant",
             "content": bot_reply,
             "image": None
         })
         
-        current_history = load_history()
-        chat_exists = False
-        for chat in current_history:
-            if chat["id"] == st.session_state.session_id:
-                chat["messages"] = st.session_state.messages
-                chat_exists = True
-                break
-        
-        if not chat_exists:
-            title = prompt[:20] + "..." if len(prompt) > 20 else prompt
-            new_data = {
-                "id": st.session_state.session_id, 
-                "title": title, 
-                "timestamp": str(datetime.now()), 
-                "messages": st.session_state.messages
-            }
-            current_history.append(new_data)
-        save_history(current_history)
-
+        # Sohbeti kaydet
+        baslik = prompt[:20] + "..." if len(prompt) > 20 else prompt
+        sohbet_kaydet(
+            st.session_state.user_id,
+            st.session_state.session_id,
+            baslik,
+            st.session_state.messages
+        )
+    
     except Exception as e:
         st.error(f"Hata: {e}")
