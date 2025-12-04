@@ -97,7 +97,6 @@ except Exception as e:
     st.stop()
 
 # --- 6. YARDIMCI FONKSİYONLAR ---
-# HATA VEREN KISIM BURASIYDI, DÜZELTİLDİ:
 def load_history():
     if not os.path.exists(USER_HISTORY_FILE):
         return []
@@ -160,12 +159,17 @@ def gorsel_olustur(prompt_text):
             safety_filter_level="block_few",
             person_generation="allow_adult"
         )
-        image_data = result.images[0].image_bytes
-        img = Image.open(io.BytesIO(image_data))
-        return img
+        # DÜZELTME: result.images bir liste döner, ilk elemanı alıyoruz.
+        if result and result.images:
+             image_data = result.images[0].image_bytes
+             img = Image.open(io.BytesIO(image_data))
+             return img
+        else:
+             # Eğer görsel oluşmazsa hata mesajı döndür
+             return None, "Görsel oluşturulamadı (Model yanıt vermedi)."
     except Exception as e:
-        # Hata olursa ekrana basmasın, sessizce None dönsün
-        return None
+        # Hata olursa ekrana bas ve None dön
+        return None, str(e)
 
 # --- 7. SIDEBAR ---
 if "messages" not in st.session_state:
@@ -216,13 +220,15 @@ st.markdown("<p style='text-align: center; color: gray;'>Metin veya görsel olu�
 
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
-        if message.get("content"):
+        # DÜZELTME: Sadece görsel yoksa metni göster
+        if message.get("content") and not message.get("image"):
              st.markdown(message["content"])
+        # Görsel varsa görseli göster
         if message.get("image"):
             try:
                 img = base64_to_image(message["image"])
                 if img:
-                    st.image(img, width=400)
+                    st.image(img, width=400, caption="Oluşturulan Görsel")
             except:
                 pass
 
@@ -266,10 +272,8 @@ if prompt:
         with st.spinner('Asistan düşünüyor...'):
             chat_history_text = []
             for m in st.session_state.messages[:-1]:
-                # İçerik kontrolü
                 msg_content = m.get("content", "")
                 if msg_content is None: msg_content = "..."
-                
                 chat_history_text.append({
                     "role": "user" if m["role"] == "user" else "model",
                     "parts": [msg_content]
@@ -287,12 +291,14 @@ if prompt:
         # GÖRSEL OLUŞTURMA KONTROLÜ
         generated_image_base64 = None
         final_content_text = bot_reply_text
+        hata_mesaji = None
 
         if bot_reply_text.strip().startswith("[GORSEL_OLUSTUR]"):
             imagen_prompt = bot_reply_text.replace("[GORSEL_OLUSTUR]", "").strip()
             
-            with st.spinner('Görsel oluşturuluyor...'):
-                generated_img = gorsel_olustur(imagen_prompt)
+            with st.spinner('Görsel oluşturuluyor (Bu işlem biraz sürebilir)...'):
+                # DÜZELTME: Fonksiyon artık iki değer döndürüyor (img, hata)
+                generated_img, hata_mesaji = gorsel_olustur(imagen_prompt)
                 
                 if generated_img:
                     generated_image_base64 = image_to_base64(generated_img)
@@ -301,7 +307,8 @@ if prompt:
                     with st.chat_message("assistant"):
                         st.image(generated_img, width=400, caption="Oluşturulan Görsel")
                 else:
-                    final_content_text = "Görsel oluşturulamadı."
+                    # Görsel oluşmadıysa hatayı göster
+                    final_content_text = f"Görsel oluşturulamadı. Hata: {hata_mesaji}"
                     with st.chat_message("assistant"):
                         st.error(final_content_text)
         
@@ -313,6 +320,7 @@ if prompt:
                     if audio_file:
                         st.audio(audio_file, format='audio/mp3', autoplay=True)
 
+        # Mesajı geçmişe kaydet
         st.session_state.messages.append({
             "role": "assistant",
             "content": final_content_text,
