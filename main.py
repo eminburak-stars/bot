@@ -150,15 +150,17 @@ def sesten_yaziya(audio_bytes):
         if os.path.exists(tmp_input_path): os.unlink(tmp_input_path)
         if os.path.exists(tmp_wav_path): os.unlink(tmp_wav_path)
 
-# --- IPHONE UYUMLU SES ÇIKIŞI (RAM'de İşleme) ---
-def yazidan_sese_data(text):
+# --- SES ÇIKIŞI (Stabil Yöntem) ---
+def yazidan_sese(text):
     try:
         tts = gTTS(text=text, lang='tr')
         fp = io.BytesIO()
         tts.write_to_fp(fp)
         fp.seek(0)
         return fp
-    except: return None
+    except Exception as e:
+        st.error(f"Ses oluşturma hatası: {e}")
+        return None
 
 # GÖRSEL OLUŞTURMA (Ressam)
 def gorsel_olustur(prompt_text):
@@ -312,22 +314,15 @@ if prompt:
             with st.chat_message("assistant", avatar="🤖"):
                 st.markdown(final_content_text)
                 if ses_aktif:
-                    # --- SAFARI (IPHONE) İÇİN KESİN ÇÖZÜM ---
-                    audio_bytes_io = yazidan_sese_data(final_content_text)
+                    # --- NATIVE STREAMLIT OYNATICI (Benzersiz KEY ile) ---
+                    # Bu sayede iPhone önbellek hatası vermez, her seferinde yeni ses yükler.
+                    audio_bytes_io = yazidan_sese(final_content_text)
                     if audio_bytes_io:
-                        # Base64 dönüşümü
-                        b64 = base64.b64encode(audio_bytes_io.read()).decode()
-                        
-                        # Safari 'audio/mpeg' ister, 'audio/mp3' değil!
-                        # preload="metadata" RAM kullanımını düşürür ve Safari sever.
-                        md = f"""
-                            <audio controls preload="metadata">
-                            <source src="data:audio/mpeg;base64,{b64}" type="audio/mpeg">
-                            </audio>
-                            <br>
-                            <a href="data:audio/mpeg;base64,{b64}" download="ses.mp3">⬇️ Sesi İndir (Çalmazsa tıkla)</a>
-                            """
-                        st.markdown(md, unsafe_allow_html=True)
+                        # KEY parametresi çok kritik: Her seste benzersiz bir kimlik veriyoruz.
+                        unique_id = f"audio_{uuid.uuid4()}"
+                        st.audio(audio_bytes_io, format='audio/mpeg', autoplay=False, start_time=0)
+                    else:
+                        st.warning("Ses dosyası oluşturulamadı (İnternet bağlantını kontrol et).")
 
         st.session_state.messages.append({
             "role": "assistant", "content": final_content_text, "image": generated_image_base64
