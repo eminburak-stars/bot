@@ -49,11 +49,18 @@ if not os.path.exists(SESSION_FOLDER):
 def temizlik_yap(dakika=30):
     su_an = time.time()
     try:
+        # Json dosyalarını temizle
         for dosya in os.listdir(SESSION_FOLDER):
             if dosya.endswith(".json"):
                 dosya_yolu = os.path.join(SESSION_FOLDER, dosya)
                 if (su_an - os.path.getmtime(dosya_yolu)) > (dakika * 60):
                     try: os.remove(dosya_yolu)
+                    except: pass
+        # Eski ses dosyalarını da temizle (iPhone için oluşturduklarımızı)
+        for dosya in os.listdir("."):
+            if dosya.startswith("ses_") and dosya.endswith(".mp3"):
+                 if (su_an - os.path.getmtime(dosya)) > (dakika * 60):
+                    try: os.remove(dosya)
                     except: pass
     except: pass
 
@@ -123,25 +130,20 @@ def base64_to_image(base64_str):
         if base64_str: return Image.open(io.BytesIO(base64.b64decode(base64_str)))
     except: return None
 
-# --- IPHONE UYUMLU SES FONKSİYONU (TEK VE DOĞRU OLAN) ---
+# --- IPHONE UYUMLU SES GİRİŞİ ---
 def sesten_yaziya(audio_bytes):
     r = sr.Recognizer()
     
-    # 1. Gelen sesi geçici bir dosyaya (uzantısız veya webm olarak) kaydet
     with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp_input:
         tmp_input.write(audio_bytes)
         tmp_input_path = tmp_input.name
     
-    # Çevrilecek temiz dosya yolu
     tmp_wav_path = tmp_input_path.replace(".webm", ".wav")
 
     try:
-        # 2. Pydub devreye giriyor: Sesi ne olursa olsun WAV'a çeviriyor
-        # (Bu satırın çalışması için sunucuda FFmpeg yüklü olmalı!)
         audio = AudioSegment.from_file(tmp_input_path) 
         audio.export(tmp_wav_path, format="wav")
         
-        # 3. Artık elimizde safkan bir WAV var, Google bunu anlar
         with sr.AudioFile(tmp_wav_path) as source:
             audio_data = r.record(source)
             text = r.recognize_google(audio_data, language="tr-TR")
@@ -152,17 +154,18 @@ def sesten_yaziya(audio_bytes):
         return None
         
     finally:
-        # Temizlik imandan gelir, dosyaları silelim
         if os.path.exists(tmp_input_path): os.unlink(tmp_input_path)
         if os.path.exists(tmp_wav_path): os.unlink(tmp_wav_path)
 
+# --- IPHONE UYUMLU SES ÇIKIŞI (BU KISIM DEĞİŞTİ) ---
 def yazidan_sese(text):
     try:
+        # iPhone için bellekte değil, diskte dosya oluşturuyoruz
+        # Her oturum için benzersiz bir isim veriyoruz
+        dosya_adi = f"ses_{st.session_state.session_id}.mp3"
         tts = gTTS(text=text, lang='tr')
-        fp = io.BytesIO()
-        tts.write_to_fp(fp)
-        fp.seek(0)
-        return fp
+        tts.save(dosya_adi)
+        return dosya_adi
     except: return None
 
 # GÖRSEL OLUŞTURMA (Ressam)
@@ -233,15 +236,12 @@ st.markdown("<p style='text-align: center; color: gray;'>Balıkesir Meslek Yüks
 for message in st.session_state.messages:
     avatar_icon = "👤" if message["role"] == "user" else "🤖"
     with st.chat_message(message["role"], avatar=avatar_icon):
-        # Görsel varsa görseli, yoksa metni göster
         if message.get("image"):
             try:
                 img = base64_to_image(message["image"])
                 if img: st.image(img, width=400, caption="Görsel")
             except: pass
         
-        # Eğer mesajda sadece metin varsa ve görsel yoksa metni göster
-        # Eğer hem görsel hem metin varsa (hata durumu vs), metni de gösterebiliriz
         if message.get("content") and not message.get("image"):
              st.markdown(message["content"])
 
@@ -261,7 +261,7 @@ if ses_aktif and audio_value:
 elif text_input:
     prompt = text_input
 
-# --- 10. CEVAP ÜRETME (Mantık Burada) ---
+# --- 10. CEVAP ÜRETME ---
 if prompt:
     saved_image_base64 = None
     saved_image_for_api = None
@@ -297,12 +297,10 @@ if prompt:
             
             bot_reply_text = response.text
 
-        # --- GÖRSEL YAKALAMA MEKANİZMASI ---
         generated_image_base64 = None
         final_content_text = bot_reply_text
         hata_mesaji = None
 
-        # Eğer bot [GORSEL_OLUSTUR] dediyse buraya girer
         if bot_reply_text.strip().startswith("[GORSEL_OLUSTUR]"):
             imagen_prompt = bot_reply_text.replace("[GORSEL_OLUSTUR]", "").strip()
             
@@ -311,7 +309,7 @@ if prompt:
                 
                 if generated_img:
                     generated_image_base64 = image_to_base64(generated_img)
-                    final_content_text = "" # Metni boşalt, sadece resim görünsün
+                    final_content_text = "" 
                     with st.chat_message("assistant", avatar="🤖"):
                         st.image(generated_img, width=400, caption="Oluşturulan Görsel")
                 else:
@@ -319,22 +317,19 @@ if prompt:
                     with st.chat_message("assistant", avatar="🤖"):
                         st.error(final_content_text)
         else:
-            # Normal cevap
             with st.chat_message("assistant", avatar="🤖"):
                 st.markdown(final_content_text)
                 if ses_aktif:
-                    audio_file = yazidan_sese(final_content_text)
-                    if audio_file:
-                        # --- IPHONE İÇİN KRİTİK DÜZELTME ---
-                        # Autoplay kapalı, Format MPEG
-                        st.audio(audio_file, format='audio/mpeg', autoplay=False)
+                    # Burada artık dosya yolu (string) geliyor, bytes değil.
+                    audio_file_path = yazidan_sese(final_content_text)
+                    if audio_file_path:
+                        # iPhone için autoplay KESİNLİKLE KAPALI olmalı
+                        st.audio(audio_file_path, format='audio/mpeg', autoplay=False)
 
-        # Mesajı kaydet
         st.session_state.messages.append({
             "role": "assistant", "content": final_content_text, "image": generated_image_base64
         })
         
-        # Geçmişe Yaz
         current_history = load_history()
         chat_exists = False
         if "current_chat_id" not in st.session_state:
