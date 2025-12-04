@@ -37,15 +37,6 @@ section[data-testid="stSidebar"] {background-color: #161b22 !important; border-r
 [data-testid="stChatMessage"]:nth-of-type(even) {background-color: #1f6feb; color: white; border-radius: 20px 0px 20px 20px; padding: 15px; margin-bottom: 10px; border: none;}
 [data-testid="stChatMessage"]:nth-of-type(even) * {color: white !important;}
 .stChatInputContainer textarea {background-color: #161b22; color: white; border: 1px solid #30363d; border-radius: 12px;}
-
-/* SES OYNATICI STİLİ */
-audio {
-    width: 100%;
-    height: 40px;
-    margin-top: 10px;
-    border-radius: 20px;
-    background-color: #f1f3f4; 
-}
 </style>
 """
 st.markdown(custom_style, unsafe_allow_html=True)
@@ -58,6 +49,13 @@ if not os.path.exists(SESSION_FOLDER):
 def temizlik_yap(dakika=30):
     su_an = time.time()
     try:
+        # Eski mp3 dosyalarını temizle
+        for dosya in os.listdir("."):
+            if dosya.endswith(".mp3") and dosya.startswith("yanit_"):
+                 if (su_an - os.path.getmtime(dosya)) > (dakika * 60):
+                    try: os.remove(dosya)
+                    except: pass
+        # Session dosyalarını temizle
         for dosya in os.listdir(SESSION_FOLDER):
             if dosya.endswith(".json"):
                 dosya_yolu = os.path.join(SESSION_FOLDER, dosya)
@@ -159,19 +157,16 @@ def sesten_yaziya(audio_bytes):
         if os.path.exists(tmp_input_path): os.unlink(tmp_input_path)
         if os.path.exists(tmp_wav_path): os.unlink(tmp_wav_path)
 
-# --- SAĞLAM SES OLUŞTURMA FONKSİYONU ---
-def metni_sese_cevir_base64(text):
+# --- GARANTİLİ SES ÇIKIŞI (DOSYA KAYDETMELİ) ---
+def yazidan_sese_dosya(text):
     try:
-        # Sesi hafızada oluştur
+        # Rastgele isim verelim ki iPhone eski dosyayı hatırlayıp hata vermesin
+        dosya_adi = f"yanit_{uuid.uuid4()}.mp3"
         tts = gTTS(text=text, lang='tr')
-        fp = io.BytesIO()
-        tts.write_to_fp(fp)
-        fp.seek(0)
-        
-        # Base64'e çevir (HTML içine gömmek için)
-        b64 = base64.b64encode(fp.read()).decode()
-        return b64
+        tts.save(dosya_adi)
+        return dosya_adi
     except Exception as e:
+        st.error(f"Ses oluşturma hatası: {e}")
         return None
 
 # GÖRSEL OLUŞTURMA (Ressam)
@@ -326,29 +321,23 @@ if prompt:
             with st.chat_message("assistant", avatar="🤖"):
                 st.markdown(final_content_text)
                 if ses_aktif:
-                    # --- IPHONE İÇİN KESİN ÇÖZÜM V3 ---
-                    try:
-                        b64_sound = metni_sese_cevir_base64(final_content_text)
-                        if b64_sound:
-                            # HTML Oynatıcı - Kabak gibi görünmesi için CSS eklendi
-                            # Type audio/mp3 olarak ayarlandı (Safari sever)
-                            md = f"""
-                            <div style="background-color: #f0f2f6; padding: 10px; border-radius: 10px; margin-top: 10px;">
-                                <audio controls style="width: 100%;">
-                                    <source src="data:audio/mp3;base64,{b64_sound}" type="audio/mp3">
-                                </audio>
-                                <div style="text-align: center; margin-top: 5px;">
-                                    <a href="data:audio/mp3;base64,{b64_sound}" download="asistan_sesi.mp3" style="color: #31333F; text-decoration: none; font-size: 12px;">
-                                        ⬇️ Oynatıcı çalışmazsa sesi indirmek için tıkla
-                                    </a>
-                                </div>
-                            </div>
-                            """
-                            st.markdown(md, unsafe_allow_html=True)
-                        else:
-                            st.warning("Ses oluşturulamadı.")
-                    except Exception as e:
-                        st.error(f"Ses hatası: {e}")
+                    # 1. Dosyayı fiziksel olarak kaydet (iPhone dostu)
+                    ses_dosyasi_yolu = yazidan_sese_dosya(final_content_text)
+                    
+                    if ses_dosyasi_yolu:
+                        # 2. Native Oynatıcı (Görünmeme şansı yok)
+                        st.audio(ses_dosyasi_yolu, format='audio/mpeg', autoplay=False)
+                        
+                        # 3. YEDEK BUTON: Eğer oynatıcı hata verirse bu kesin çalışır
+                        with open(ses_dosyasi_yolu, "rb") as file:
+                            btn = st.download_button(
+                                label="⬇️ Sesi İndir / Dinle",
+                                data=file,
+                                file_name=ses_dosyasi_yolu,
+                                mime="audio/mpeg"
+                            )
+                    else:
+                        st.warning("Ses dosyası oluşturulamadı.")
 
         st.session_state.messages.append({
             "role": "assistant", "content": final_content_text, "image": generated_image_base64
