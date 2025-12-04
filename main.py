@@ -246,7 +246,7 @@ with st.sidebar:
 
 # --- 8. ANA EKRAN ---
 st.markdown("<h1 style='text-align: center; color: white;'>BAUN-MYO AI Asistan</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: gray;'>MYO AI'ye Sorun</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: gray;'>Metin, Görsel ve Sesli Sohbet Asistanı</p>", unsafe_allow_html=True)
 
 # Mesajları Döngüyle Yazdır
 for message in st.session_state.messages:
@@ -265,7 +265,7 @@ if ses_aktif:
     st.write("**Mikrofon:**")
     audio_value = st.audio_input("Konuş")
 
-text_input = st.chat_input("Mesajınızı buraya yazın...") 
+text_input = st.chat_input("Asistana Sorun...") 
 prompt = None
 
 if ses_aktif and audio_value:
