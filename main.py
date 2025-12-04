@@ -11,6 +11,7 @@ import base64
 import speech_recognition as sr
 from gtts import gTTS
 import tempfile
+from pydub import AudioSegment 
 
 # --- 1. SAYFA AYARLARI ---
 st.set_page_config(
@@ -96,7 +97,7 @@ except Exception as e:
     st.error(f"API Hatası: {e}")
     st.stop()
 
-# --- 6. YARDIMCI FONKSİYONLAR (Hata Düzeltildi) ---
+# --- 6. YARDIMCI FONKSİYONLAR ---
 def load_history():
     if not os.path.exists(USER_HISTORY_FILE):
         return []
@@ -136,14 +137,37 @@ def sesten_yaziya(audio_bytes):
     finally:
         if os.path.exists(tmp_audio_path): os.unlink(tmp_audio_path)
 
-def yazidan_sese(text):
+def sesten_yaziya(audio_bytes):
+    r = sr.Recognizer()
+    
+    # 1. Gelen sesi geçici bir dosyaya (uzantısız veya webm olarak) kaydet
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp_input:
+        tmp_input.write(audio_bytes)
+        tmp_input_path = tmp_input.name
+    
+    # Çevrilecek temiz dosya yolu
+    tmp_wav_path = tmp_input_path.replace(".webm", ".wav")
+
     try:
-        tts = gTTS(text=text, lang='tr')
-        fp = io.BytesIO()
-        tts.write_to_fp(fp)
-        fp.seek(0)
-        return fp
-    except: return None
+        # 2. Pydub devreye giriyor: Sesi ne olursa olsun WAV'a çeviriyor
+        # (Bu satırın çalışması için sunucuda FFmpeg yüklü olmalı!)
+        audio = AudioSegment.from_file(tmp_input_path) 
+        audio.export(tmp_wav_path, format="wav")
+        
+        # 3. Artık elimizde safkan bir WAV var, Google bunu anlar
+        with sr.AudioFile(tmp_wav_path) as source:
+            audio_data = r.record(source)
+            text = r.recognize_google(audio_data, language="tr-TR")
+            return text
+            
+    except Exception as e:
+        print(f"Ses İşleme Hatası: {e}") 
+        return None
+        
+    finally:
+        # Temizlik imandan gelir, dosyaları silelim
+        if os.path.exists(tmp_input_path): os.unlink(tmp_input_path)
+        if os.path.exists(tmp_wav_path): os.unlink(tmp_wav_path)
 
 # GÖRSEL OLUŞTURMA (Ressam)
 def gorsel_olustur(prompt_text):
