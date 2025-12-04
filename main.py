@@ -320,24 +320,27 @@ if prompt:
         else:
             with st.chat_message("assistant", avatar="🤖"):
                 st.markdown(final_content_text)
+                
                 if ses_aktif:
-                    # 1. Dosyayı fiziksel olarak kaydet (iPhone dostu)
+                    # --- NÜKLEER ÇÖZÜM: DOSYAYI OKU VE BYTE OLARAK BAS ---
+                    # 1. Önce dosyayı oluştur
                     ses_dosyasi_yolu = yazidan_sese_dosya(final_content_text)
                     
                     if ses_dosyasi_yolu:
-                        # 2. Native Oynatıcı (Görünmeme şansı yok)
-                        st.audio(ses_dosyasi_yolu, format='audio/mpeg', autoplay=False)
+                        # 2. Dosyayı BYTE olarak oku (Yol olarak verme!)
+                        with open(ses_dosyasi_yolu, "rb") as f:
+                            audio_bytes = f.read()
                         
-                        # 3. YEDEK BUTON: Eğer oynatıcı hata verirse bu kesin çalışır
-                        with open(ses_dosyasi_yolu, "rb") as file:
-                            btn = st.download_button(
-                                label="⬇️ Sesi İndir / Dinle",
-                                data=file,
-                                file_name=ses_dosyasi_yolu,
-                                mime="audio/mpeg"
-                            )
+                        # 3. Streamlit Player (Görünür olmak zorunda)
+                        st.audio(audio_bytes, format='audio/mpeg', start_time=0)
+                        
+                        # 4. KESİN GÖRÜNÜR YEDEK: Tıklanabilir Link (Base64)
+                        b64 = base64.b64encode(audio_bytes).decode()
+                        link_html = f'<a href="data:audio/mpeg;base64,{b64}" download="ses.mp3" style="display: inline-block; padding: 10px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 5px;">🔊 SESİ BURADAN OYNAT (Görünmezse Tıkla)</a>'
+                        st.markdown(link_html, unsafe_allow_html=True)
+                        
                     else:
-                        st.warning("Ses dosyası oluşturulamadı.")
+                        st.warning("Ses oluşturulamadı.")
 
         st.session_state.messages.append({
             "role": "assistant", "content": final_content_text, "image": generated_image_base64
