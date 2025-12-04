@@ -19,7 +19,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. PROFESYONEL TASARIM (CSS - Ciddi & Sade) ---
+# --- 2. PROFESYONEL TASARIM (CSS) ---
 custom_style = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
@@ -45,7 +45,8 @@ st.markdown(custom_style, unsafe_allow_html=True)
 
 # --- 3. KLASÖR VE TEMİZLİK ---
 SESSION_FOLDER = "sessions"
-if not os.path.exists(SESSION_FOLDER): os.makedirs(SESSION_FOLDER)
+if not os.path.exists(SESSION_FOLDER):
+    os.makedirs(SESSION_FOLDER)
 
 def temizlik_yap(dakika=30):
     su_an = time.time()
@@ -54,17 +55,22 @@ def temizlik_yap(dakika=30):
             if dosya.endswith(".json"):
                 dosya_yolu = os.path.join(SESSION_FOLDER, dosya)
                 if (su_an - os.path.getmtime(dosya_yolu)) > (dakika * 60):
-                    try: os.remove(dosya_yolu)
-                    except: pass
-    except: pass
+                    try:
+                        os.remove(dosya_yolu)
+                    except:
+                        pass
+    except:
+        pass
+
 temizlik_yap(dakika=30)
 
 # --- 4. SESSION ID ---
-if "session_id" not in st.session_state: st.session_state.session_id = str(uuid.uuid4())
+if "session_id" not in st.session_state:
+    st.session_state.session_id = str(uuid.uuid4())
+
 USER_HISTORY_FILE = os.path.join(SESSION_FOLDER, f"history_{st.session_state.session_id}.json")
 
-# --- 5. API AYARLARI (GÜNCELLENDİ) ---
-# Sisteme görsel oluşturma talimatı ekledik.
+# --- 5. API AYARLARI ---
 okul_bilgileri = """
 Sen Balıkesir Üniversitesi Meslek Yüksekokulu (BAUN MYO) asistanısın. İsmin BAUN Asistan.
 Çok ciddi, sade ve net cevaplar ver. Asla emoji kullanma. Sadece metin odaklı konuş.
@@ -79,36 +85,46 @@ Diğer tüm durumlarda normal Türkçe metin olarak cevap ver.
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
     genai.configure(api_key=api_key)
-    # Metin/Chat Modeli
+    # Metin Modeli
     model = genai.GenerativeModel(
         model_name='gemini-2.0-flash',
         system_instruction=okul_bilgileri
     )
-    # Görsel Oluşturma Modeli (Imagen 3)
+    # Görsel Modeli
     imagen_model = genai.GenerativeModel("imagen-3.0-generate-001")
 except Exception as e:
     st.error(f"API Hatası: {e}")
     st.stop()
 
 # --- 6. YARDIMCI FONKSİYONLAR ---
+# HATA VEREN KISIM BURASIYDI, DÜZELTİLDİ:
 def load_history():
-    if not os.path.exists(USER_HISTORY_FILE): return []
-    try: with open(USER_HISTORY_FILE, "r", encoding="utf-8") as f: return json.load(f)
-    except: return []
+    if not os.path.exists(USER_HISTORY_FILE):
+        return []
+    try:
+        with open(USER_HISTORY_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return []
 
 def save_history(history):
-    with open(USER_HISTORY_FILE, "w", encoding="utf-8") as f: json.dump(history, f, ensure_ascii=False, indent=4)
+    with open(USER_HISTORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(history, f, ensure_ascii=False, indent=4)
 
 def image_to_base64(image):
     try:
         buffered = io.BytesIO()
         image.save(buffered, format="PNG")
         return base64.b64encode(buffered.getvalue()).decode()
-    except: return None
+    except:
+        return None
 
 def base64_to_image(base64_str):
-    try: if base64_str: return Image.open(io.BytesIO(base64.b64decode(base64_str)))
-    except: return None
+    try:
+        if base64_str:
+            return Image.open(io.BytesIO(base64.b64decode(base64_str)))
+    except:
+        return None
 
 def sesten_yaziya(audio_bytes):
     r = sr.Recognizer()
@@ -119,8 +135,11 @@ def sesten_yaziya(audio_bytes):
         with sr.AudioFile(tmp_audio_path) as source:
             audio_data = r.record(source)
             return r.recognize_google(audio_data, language="tr-TR")
-    except: return None
-    finally: if os.path.exists(tmp_audio_path): os.unlink(tmp_audio_path)
+    except:
+        return None
+    finally:
+        if os.path.exists(tmp_audio_path):
+            os.unlink(tmp_audio_path)
 
 def yazidan_sese(text):
     try:
@@ -129,15 +148,15 @@ def yazidan_sese(text):
         tts.write_to_fp(fp)
         fp.seek(0)
         return fp
-    except: return None
+    except:
+        return None
 
-# --- YENİ: Görsel Oluşturma Fonksiyonu ---
 def gorsel_olustur(prompt_text):
     try:
         result = imagen_model.generate_images(
             prompt=prompt_text,
             number_of_images=1,
-            aspect_ratio="1:1", # Kare görsel
+            aspect_ratio="1:1",
             safety_filter_level="block_few",
             person_generation="allow_adult"
         )
@@ -145,29 +164,36 @@ def gorsel_olustur(prompt_text):
         img = Image.open(io.BytesIO(image_data))
         return img
     except Exception as e:
-        st.error(f"Görsel oluşturulamadı: {e}")
+        # Hata olursa ekrana basmasın, sessizce None dönsün
         return None
 
 # --- 7. SIDEBAR ---
-if "messages" not in st.session_state: st.session_state.messages = []
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
 with st.sidebar:
     st.title("BAUN MYO")
     st.markdown("---")
     st.subheader("İşlemler")
-    uploaded_file = st.file_uploader("Görsel Yükle (Analiz için)", type=["jpg", "png", "jpeg"])
+    
+    uploaded_file = st.file_uploader("Görsel Yükle (Analiz)", type=["jpg", "png", "jpeg"])
     current_image = None
     if uploaded_file:
         try:
             current_image = Image.open(uploaded_file)
             st.success("Görsel eklendi.")
             st.image(current_image, use_container_width=True)
-        except: st.error("Hata")
+        except:
+            st.error("Hata")
+            
     st.markdown("---")
     ses_aktif = st.toggle("Sesli Yanıt", value=False)
+    
     if st.button("Yeni Sohbet", use_container_width=True):
         st.session_state.messages = []
         st.session_state.current_chat_id = str(uuid.uuid4())
         st.rerun()
+        
     st.markdown("### Geçmiş Sohbetler")
     for chat in reversed(load_history()):
         raw_title = chat.get("title", "Sohbet")
@@ -176,9 +202,11 @@ with st.sidebar:
             st.session_state.messages = chat["messages"]
             st.session_state.current_chat_id = chat["id"]
             st.rerun()
+            
     st.markdown("---")
     if st.button("Geçmişi Temizle", type="primary", use_container_width=True):
-        if os.path.exists(USER_HISTORY_FILE): os.remove(USER_HISTORY_FILE)
+        if os.path.exists(USER_HISTORY_FILE):
+            os.remove(USER_HISTORY_FILE)
         st.session_state.messages = []
         st.rerun()
 
@@ -188,110 +216,132 @@ st.markdown("<p style='text-align: center; color: gray;'>Metin veya görsel olu�
 
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
-        # Eğer mesajda metin varsa göster
         if message.get("content"):
              st.markdown(message["content"])
-        # Eğer mesajda görsel varsa (hem yüklenen hem oluşturulan) göster
         if message.get("image"):
             try:
                 img = base64_to_image(message["image"])
-                if img: st.image(img, width=400)
-            except: pass
+                if img:
+                    st.image(img, width=400)
+            except:
+                pass
 
 # --- 9. GİRİŞ ALANI ---
 audio_value = None
 if ses_aktif:
     st.write("**Mikrofon:**")
     audio_value = st.audio_input("Konuş")
+
 text_input = st.chat_input("Mesajınızı buraya yazın...")
 prompt = None
+
 if ses_aktif and audio_value:
     with st.spinner("Sesiniz işleniyor..."):
         prompt = sesten_yaziya(audio_value.read())
-        if not prompt: st.warning("Ses anlaşılamadı.")
-elif text_input: prompt = text_input
+        if not prompt:
+            st.warning("Ses anlaşılamadı.")
+elif text_input:
+    prompt = text_input
 
-# --- 10. CEVAP ÜRETME (GÜNCELLENDİ) ---
+# --- 10. CEVAP ÜRETME ---
 if prompt:
     saved_image_base64 = None
     saved_image_for_api = None
-    # Kullanıcının yüklediği görsel varsa hazırla
     if current_image:
         saved_image_base64 = image_to_base64(current_image)
         saved_image_for_api = current_image.copy()
     
-    # Kullanıcı mesajını göster
     with st.chat_message("user"):
         st.markdown(prompt)
-        if saved_image_for_api: st.image(saved_image_for_api, width=300)
+        if saved_image_for_api:
+            st.image(saved_image_for_api, width=300)
     
-    st.session_state.messages.append({"role": "user", "content": prompt, "image": saved_image_base64})
+    st.session_state.messages.append({
+        "role": "user",
+        "content": prompt,
+        "image": saved_image_base64
+    })
 
     try:
-        # Önce Gemini (Metin Modeli) ne diyecek ona bakalım
         with st.spinner('Asistan düşünüyor...'):
             chat_history_text = []
             for m in st.session_state.messages[:-1]:
-                chat_history_text.append({"role": "user" if m["role"] == "user" else "model", "parts": [m["content"] if m["content"] else "..."]})
+                # İçerik kontrolü
+                msg_content = m.get("content", "")
+                if msg_content is None: msg_content = "..."
+                
+                chat_history_text.append({
+                    "role": "user" if m["role"] == "user" else "model",
+                    "parts": [msg_content]
+                })
             
             chat_session = model.start_chat(history=chat_history_text)
-            if saved_image_for_api: response = chat_session.send_message([prompt, saved_image_for_api])
-            else: response = chat_session.send_message(prompt)
+            
+            if saved_image_for_api:
+                response = chat_session.send_message([prompt, saved_image_for_api])
+            else:
+                response = chat_session.send_message(prompt)
+            
             bot_reply_text = response.text
 
-        # --- GÖRSEL OLUŞTURMA KONTROLÜ ---
-        # Eğer Gemini "[GORSEL_OLUSTUR]" etiketi verdiyse, rotayı Imagen'e çeviriyoruz.
+        # GÖRSEL OLUŞTURMA KONTROLÜ
         generated_image_base64 = None
-        final_content_text = bot_reply_text # Varsayılan olarak metni göster
+        final_content_text = bot_reply_text
 
         if bot_reply_text.strip().startswith("[GORSEL_OLUSTUR]"):
-            # Etiketi kaldır, geri kalan İngilizce promptu al
             imagen_prompt = bot_reply_text.replace("[GORSEL_OLUSTUR]", "").strip()
             
-            with st.spinner('Görsel oluşturuluyor (Bu işlem biraz sürebilir)...'):
-                # Imagen modelini çağır
+            with st.spinner('Görsel oluşturuluyor...'):
                 generated_img = gorsel_olustur(imagen_prompt)
                 
                 if generated_img:
-                    # Oluşan görseli base64'e çevir (kayıt için)
                     generated_image_base64 = image_to_base64(generated_img)
-                    final_content_text = "" # Görsel varken metin boş olsun (veya istersen açıklama ekle)
+                    final_content_text = "" 
                     
-                    # Görseli asistan balonunda göster
                     with st.chat_message("assistant"):
                         st.image(generated_img, width=400, caption="Oluşturulan Görsel")
                 else:
-                    final_content_text = "Görsel oluşturulurken bir sorun oluştu."
-                    with st.chat_message("assistant"): st.error(final_content_text)
+                    final_content_text = "Görsel oluşturulamadı."
+                    with st.chat_message("assistant"):
+                        st.error(final_content_text)
         
         else:
-            # NORMAL METİN CEVABI
             with st.chat_message("assistant"):
                 st.markdown(final_content_text)
                 if ses_aktif:
                     audio_file = yazidan_sese(final_content_text)
-                    if audio_file: st.audio(audio_file, format='audio/mp3', autoplay=True)
+                    if audio_file:
+                        st.audio(audio_file, format='audio/mp3', autoplay=True)
 
-        # Mesajı geçmişe kaydet (Hem metin hem görsel olabilir)
         st.session_state.messages.append({
             "role": "assistant",
             "content": final_content_text,
-            "image": generated_image_base64 # Eğer görsel oluşturulduysa buraya eklenir
+            "image": generated_image_base64
         })
         
-        # --- KAYIT İŞLEMLERİ ---
+        # KAYIT
         current_history = load_history()
         chat_exists = False
-        if "current_chat_id" not in st.session_state: st.session_state.current_chat_id = str(uuid.uuid4())
+        if "current_chat_id" not in st.session_state:
+            st.session_state.current_chat_id = str(uuid.uuid4())
+        
         cid = st.session_state.current_chat_id
+        
         for chat in current_history:
             if chat["id"] == cid:
                 chat["messages"] = st.session_state.messages
                 chat_exists = True
                 break
+        
         if not chat_exists:
             title = prompt[:30] + "..." if len(prompt) > 30 else prompt
-            current_history.append({"id": cid, "title": title, "timestamp": str(datetime.now()), "messages": st.session_state.messages})
+            current_history.append({
+                "id": cid,
+                "title": title,
+                "timestamp": str(datetime.now()),
+                "messages": st.session_state.messages
+            })
+        
         save_history(current_history)
 
     except Exception as e:
