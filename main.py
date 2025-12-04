@@ -51,7 +51,7 @@ def temizlik_yap(dakika=30):
     try:
         # Eski mp3 dosyalarını temizle
         for dosya in os.listdir("."):
-            if dosya.endswith(".mp3") and dosya.startswith("yanit_"):
+            if dosya.endswith(".mp3") and dosya.startswith("ses_"):
                  if (su_an - os.path.getmtime(dosya)) > (dakika * 60):
                     try: os.remove(dosya)
                     except: pass
@@ -157,11 +157,11 @@ def sesten_yaziya(audio_bytes):
         if os.path.exists(tmp_input_path): os.unlink(tmp_input_path)
         if os.path.exists(tmp_wav_path): os.unlink(tmp_wav_path)
 
-# --- GARANTİLİ SES ÇIKIŞI (DOSYA KAYDETMELİ) ---
-def yazidan_sese_dosya(text):
+# --- GARANTİLİ SES KAYDI ---
+def yazidan_sese_kaydet(text):
     try:
-        # Rastgele isim verelim ki iPhone eski dosyayı hatırlayıp hata vermesin
-        dosya_adi = f"yanit_{uuid.uuid4()}.mp3"
+        # Rastgele isimle kaydet ki iPhone eskiyi hatırlamasın
+        dosya_adi = f"ses_{uuid.uuid4()}.mp3"
         tts = gTTS(text=text, lang='tr')
         tts.save(dosya_adi)
         return dosya_adi
@@ -322,23 +322,22 @@ if prompt:
                 st.markdown(final_content_text)
                 
                 if ses_aktif:
-                    # --- NÜKLEER ÇÖZÜM: DOSYAYI OKU VE BYTE OLARAK BAS ---
-                    # 1. Önce dosyayı oluştur
-                    ses_dosyasi_yolu = yazidan_sese_dosya(final_content_text)
+                    # 1. Dosyayı diske kaydet
+                    ses_yolu = yazidan_sese_kaydet(final_content_text)
                     
-                    if ses_dosyasi_yolu:
-                        # 2. Dosyayı BYTE olarak oku (Yol olarak verme!)
-                        with open(ses_dosyasi_yolu, "rb") as f:
-                            audio_bytes = f.read()
+                    if ses_yolu:
+                        # 2. Dosyayı binary (byte) olarak oku
+                        with open(ses_yolu, "rb") as f:
+                            audio_data = f.read()
                         
-                        # 3. Streamlit Player (Görünür olmak zorunda)
-                        st.audio(audio_bytes, format='audio/mpeg', start_time=0)
+                        # A. Standart Oynatıcıyı Dene (Belki çalışır)
+                        st.audio(audio_data, format='audio/mpeg', start_time=0)
                         
-                        # 4. KESİN GÖRÜNÜR YEDEK: Tıklanabilir Link (Base64)
-                        b64 = base64.b64encode(audio_bytes).decode()
-                        link_html = f'<a href="data:audio/mpeg;base64,{b64}" download="ses.mp3" style="display: inline-block; padding: 10px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 5px;">🔊 SESİ BURADAN OYNAT (Görünmezse Tıkla)</a>'
-                        st.markdown(link_html, unsafe_allow_html=True)
-                        
+                        # B. MANUEL LİNK (ATOM BOMBASI YÖNTEMİ) 
+                        # Bu linke tıklayınca ses kesin açılır.
+                        b64 = base64.b64encode(audio_data).decode()
+                        link = f'<a href="data:audio/mpeg;base64,{b64}" download="asistan.mp3" style="color:#00ff00; font-weight:bold; font-size:18px; text-decoration:none; border:1px solid #00ff00; padding:10px; border-radius:10px; display:block; text-align:center; margin-top:10px;">🔊 SESİ DİNLEMEK İÇİN TIKLA (GARANTİ)</a>'
+                        st.markdown(link, unsafe_allow_html=True)
                     else:
                         st.warning("Ses oluşturulamadı.")
 
