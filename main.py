@@ -207,7 +207,7 @@ with st.sidebar:
 
 # --- 8. ANA EKRAN ---
 st.markdown("<h1 style='text-align: center; color: white;'>BAUN-MYO AI Asistan</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: gray;'>Sorularını sor veya 'Bana ... resmi çiz' de.</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: gray;'>Balıkesir Meslek Yüksekokulu AI Asistan.</p>", unsafe_allow_html=True)
 
 # Mesajları Ekrana Bas
 for message in st.session_state.messages:
