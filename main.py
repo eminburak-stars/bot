@@ -102,7 +102,6 @@ def load_history():
     if not os.path.exists(USER_HISTORY_FILE):
         return []
     try:
-        # HATA BURADAYDI: Tek satır yerine alt alta yazdık.
         with open(USER_HISTORY_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
     except:
@@ -124,19 +123,7 @@ def base64_to_image(base64_str):
         if base64_str: return Image.open(io.BytesIO(base64.b64decode(base64_str)))
     except: return None
 
-def sesten_yaziya(audio_bytes):
-    r = sr.Recognizer()
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_audio:
-        tmp_audio.write(audio_bytes)
-        tmp_audio_path = tmp_audio.name
-    try:
-        with sr.AudioFile(tmp_audio_path) as source:
-            audio_data = r.record(source)
-            return r.recognize_google(audio_data, language="tr-TR")
-    except: return None
-    finally:
-        if os.path.exists(tmp_audio_path): os.unlink(tmp_audio_path)
-
+# --- IPHONE UYUMLU SES FONKSİYONU (TEK VE DOĞRU OLAN) ---
 def sesten_yaziya(audio_bytes):
     r = sr.Recognizer()
     
@@ -168,6 +155,15 @@ def sesten_yaziya(audio_bytes):
         # Temizlik imandan gelir, dosyaları silelim
         if os.path.exists(tmp_input_path): os.unlink(tmp_input_path)
         if os.path.exists(tmp_wav_path): os.unlink(tmp_wav_path)
+
+def yazidan_sese(text):
+    try:
+        tts = gTTS(text=text, lang='tr')
+        fp = io.BytesIO()
+        tts.write_to_fp(fp)
+        fp.seek(0)
+        return fp
+    except: return None
 
 # GÖRSEL OLUŞTURMA (Ressam)
 def gorsel_olustur(prompt_text):
@@ -328,7 +324,10 @@ if prompt:
                 st.markdown(final_content_text)
                 if ses_aktif:
                     audio_file = yazidan_sese(final_content_text)
-                    if audio_file: st.audio(audio_file, format='audio/mp3', autoplay=True)
+                    if audio_file:
+                        # --- IPHONE İÇİN KRİTİK DÜZELTME ---
+                        # Autoplay kapalı, Format MPEG
+                        st.audio(audio_file, format='audio/mpeg', autoplay=False)
 
         # Mesajı kaydet
         st.session_state.messages.append({
