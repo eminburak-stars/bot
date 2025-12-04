@@ -20,7 +20,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. PROFESYONEL TASARIM (CSS) ---
+# --- 2. PROFESYONEL TASARIM ---
 custom_style = """
 <style>
 /* Fontu Google'dan çekelim (Inter Fontu) */
@@ -333,7 +333,7 @@ if prompt:
             "role": "assistant", "content": bot_reply, "image": None
         })
         
-        # --- KAYIT (SAVE) ---
+        # --- KAYIT ---
         current_history = load_history()
         chat_exists = False
         
