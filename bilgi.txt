@@ -25,14 +25,7 @@ Güçlü Yönler: Okulda güçlü bir akademik kadro ve "İşletmede Mesleki Eğ
 (Yapay Zeka Operatörlüğü Programı bu bölümün altındadır)
 
 Bölüm Akademik Kadrosu (Hocalarımız):
-- Dr. Öğr. Üyesi İsmail Celalettin TIĞLI
 - Dr. Öğr. Üyesi Erol ÖZÇEKİÇ
-- Öğr. Gör. Mehmet YÜKSEK
-- Öğr. Gör. Kenan HAKTANIRLAR
-- Öğr. Gör. Murat Sabri SARAN
-- Öğr. Gör. Ahmet KOÇAK
-- Öğr. Gör. Fethiye Burcu AYDEMİR
-- Öğr. Gör. Batın DEMİRCAN
 - Öğr.Gör. İlyas Güvenç PİRGE
 - Öğr.Gör. Ali ERFİDAN
 - Öğr.Gör. Mehmet AKDİŞ
@@ -78,3 +71,7 @@ Bölüm Hakkında: Önü açık bir bölüm olduğu ve geleceğe dönük iş imk
 Hocalar Hakkında: Hocalar hakkında Hocaların Gayet bilgili, cana yakın, deneyimli olduğu ve gayet iyi ders işledikleri fakat biraz hızlı ders işledikleri görülüyor.
 Dersler Hakkında Düşünceler: Öğrencilerin çoğu derslerin verimli olduğunu ama çok yoğun bir ders programı olduğunu düşünor, ve bazı dersler genel olarak aşırı teorik buda öğrencilerin derslten kopmalarına yol açabiliyor bazen.
 MYO hakkında düşünceler: Öğrenciler genel olarak myonun eski ve tuvaletlerin halinden şikayetci onun dışında ders materyalleri açısından gayet yeterli kantini büyük ve hocaların iyi olduğu düşünülüyor.
+Ali Hoca Hakkında: Bilgili İşinde deneyimli cana yakın çalışkan bir hocalarına
+Erol hoca Hakkında: bilgili İşinde gayet deneyimli biraz sert görünümlü bir hoca dersleri hakkında gayet bilgili
+İlyas hoca hakkında: bilgili dersleri hakkında araştırma yapan yeni iyi bir hoca gayette bilgilidir
+mehmet hoca hakkında: Derslerinde gayet bilgili cana yakın bir hoca
