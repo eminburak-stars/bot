@@ -115,7 +115,7 @@ section[data-testid="stSidebar"] {
 """
 st.markdown(custom_style, unsafe_allow_html=True)
 
-# --- 3. KLASÖR VE TEMİZLİK (Garbage Collector) ---
+# --- 3. KLASÖR VE TEMİZLİK ---
 SESSION_FOLDER = "sessions"
 if not os.path.exists(SESSION_FOLDER):
     os.makedirs(SESSION_FOLDER)
@@ -141,23 +141,50 @@ if "session_id" not in st.session_state:
 
 USER_HISTORY_FILE = os.path.join(SESSION_FOLDER, f"history_{st.session_state.session_id}.json")
 
-# --- 5. API AYARLARI ---
-okul_bilgileri = """
-Sen Balıkesir Üniversitesi Meslek Yüksekokulu (BAUN MYO) asistanısın.
-İsmin BAUN Asistan.
-Çok ciddi, sade ve net cevaplar ver.
-Cevaplarında ASLA emoji kullanma.
-Samimi ol ama cıvık olma. Sadece metin odaklı konuş.
-Tasarımcı gibi düşün, minimalist cevaplar ver.
+# --- 5. API AYARLARI VE BİLGİ BANKASI ---
+
+def bilgi_bankasini_oku():
+    dosya_yolu = "bilgi.txt"
+    varsayilan_bilgi = "Sen bir yapay zeka asistanısın."
+    
+    if os.path.exists(dosya_yolu):
+        try:
+            with open(dosya_yolu, "r", encoding="utf-8") as f:
+                return f.read()
+        except Exception as e:
+            st.error(f"Bilgi dosyası okunamadı: {e}")
+            return varsayilan_bilgi
+    else:
+        # Eğer dosya yoksa basit bir instruction döndür
+        return varsayilan_bilgi
+
+# Bilgi dosyasını oku
+okul_bilgileri_text = bilgi_bankasini_oku()
+
+# System Instruction'ı Oluştur (Dosyadan gelen veri + Görsel kuralı)
+system_instruction = f"""
+{okul_bilgileri_text}
+
+EKSTRA GÖREV (GÖRSEL OLUŞTURMA):
+Eğer kullanıcı senden açıkça bir görsel, resim, fotoğraf veya çizim oluşturmanı isterse, normal bir cevap verme.
+Bunun yerine, cevabının başına tam olarak şu etiketi koy: `[GORSEL_OLUSTUR]`
+Bu etiketin hemen ardından, kullanıcının istediği görseli detaylı bir şekilde tarif eden İNGİLİZCE bir prompt yaz.
+Örnek: `[GORSEL_OLUSTUR] A photorealistic image of Balikesir University campus.`
 """
 
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
     genai.configure(api_key=api_key)
+    
+    # Metin Modeli (System instruction dosradan geliyor)
     model = genai.GenerativeModel(
         model_name='gemini-2.0-flash',
-        system_instruction=okul_bilgileri
+        system_instruction=system_instruction 
     )
+    
+    # Görsel Modeli
+    imagen_model = genai.GenerativeModel("imagen-3.0-generate-001")
+    
 except Exception as e:
     st.error(f"API Hatası: {e}")
     st.stop()
