@@ -14,12 +14,12 @@ import tempfile
 # --- 1. AYARLAR (SADE) ---
 st.set_page_config(
     page_title="BAUN-MYO-AI Asistan", 
-    page_icon="indir.jpeg",  # Senin resim dosyan
+    page_icon="indir.jpeg",  
     layout="centered",
     initial_sidebar_state="auto"
 )
 
-# --- TASARIM MÜDAHALESİ (CSS) - NORMALE DÖNÜŞ ---
+# --- TASARIM MÜDAHALESİ (CSS) ---
 custom_style = """
 <style>
 /* Header'ı ve 3 noktayı GİZLEMİYORUZ artık. */
@@ -147,7 +147,7 @@ if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
     st.session_state.messages = []
 
-# --- 6. YAN MENÜ (SADE) ---
+# --- 6. YAN MENÜ ---
 with st.sidebar:
     st.subheader("Menü")
     
@@ -185,7 +185,7 @@ with st.sidebar:
         st.session_state.messages = []
         st.rerun()
 
-# --- 7. ANA EKRAN (SADE) ---
+# --- 7. ANA EKRAN ---
 st.header("BAUN-MYO-AI Asistan")
 st.caption("MYO'nun Görsel, Sesli ve Metinsel Yapay Zekası")
 
@@ -198,14 +198,13 @@ for message in st.session_state.messages:
                 if img: st.image(img, width=300)
             except: pass
 
-# --- 8. GİRİŞ (İPUCU BURAYA EKLENDİ) ---
+# --- 8. GİRİŞ ---
 audio_value = None
 if ses_aktif:
     st.write("Mikrofon:")
     audio_value = st.audio_input("Konuş")
 
-text_input = st.chat_input("Mesajınızı yazın...")  # Mesaj kutusu burada
-
+text_input = st.chat_input("Mesajınızı yazın...") 
 prompt = None
 if ses_aktif and audio_value:
     with st.spinner("Dinliyorum..."):
