@@ -39,12 +39,19 @@ section[data-testid="stSidebar"] {background-color: #161b22 !important; border-r
 st.markdown(custom_style, unsafe_allow_html=True)
 
 # --- 3. KLASÖR VE TEMİZLİK ---
+# Ana oturum klasörü
 SESSION_FOLDER = "sessions"
 if not os.path.exists(SESSION_FOLDER):
     os.makedirs(SESSION_FOLDER)
 
-def temizlik_yap(dakika=30):
+# --- YENİ: SES DOSYALARI İÇİN KLASÖR ---
+AUDIO_FOLDER = "sesler"
+if not os.path.exists(AUDIO_FOLDER):
+    os.makedirs(AUDIO_FOLDER)
+
+def temizlik_yap(dakika=60):
     su_an = time.time()
+    # Jsonları temizle
     try:
         for dosya in os.listdir(SESSION_FOLDER):
             if dosya.endswith(".json"):
@@ -53,8 +60,17 @@ def temizlik_yap(dakika=30):
                     try: os.remove(dosya_yolu)
                     except: pass
     except: pass
+    
+    # Eski sesleri temizle (disk dolmasın diye)
+    try:
+        for dosya in os.listdir(AUDIO_FOLDER):
+            dosya_yolu = os.path.join(AUDIO_FOLDER, dosya)
+            if (su_an - os.path.getmtime(dosya_yolu)) > (dakika * 60): # 1 saatten eski sesleri sil
+                try: os.remove(dosya_yolu)
+                except: pass
+    except: pass
 
-temizlik_yap(dakika=30)
+temizlik_yap(dakika=60)
 
 # --- 4. SESSION STATE ---
 if "session_id" not in st.session_state:
@@ -129,14 +145,23 @@ def base64_to_image(base64_str):
         if base64_str: return Image.open(io.BytesIO(base64.b64decode(base64_str)))
     except: return None
 
-# SES İÇİN YARDIMCI FONKSİYONLAR
-def bytes_to_base64_str(data_bytes):
-    return base64.b64encode(data_bytes).decode('utf-8')
+# --- YENİ SES KAYDETME YÖNTEMİ (DOSYA TABANLI) ---
+def metni_sese_cevir_ve_kaydet(text):
+    """Metni mp3 dosyası olarak 'sesler' klasörüne kaydeder ve dosya yolunu döner."""
+    try:
+        # Rastgele benzersiz isim oluştur
+        dosya_adi = f"ses_{uuid.uuid4()}.mp3"
+        dosya_yolu = os.path.join(AUDIO_FOLDER, dosya_adi)
+        
+        tts = gTTS(text=text, lang='tr', slow=False)
+        tts.save(dosya_yolu)
+        
+        return dosya_yolu # Örn: sesler/ses_1234.mp3
+    except Exception as e: 
+        print(f"Ses kaydetme hatası: {e}")
+        return None
 
-def base64_str_to_bytes(data_str):
-    return base64.b64decode(data_str.encode('utf-8'))
-
-# --- SES İŞLEME ---
+# --- SES İŞLEME (INPUT) ---
 def sesten_yaziya(audio_bytes):
     try:
         transcription_model = genai.GenerativeModel("gemini-2.0-flash")
@@ -148,16 +173,6 @@ def sesten_yaziya(audio_bytes):
     except Exception as e:
         print(f"Ses hatası: {e}") 
         return None
-
-def metni_sese_cevir_bytes(text):
-    try:
-        # Sadece okuma için gTTS kullanıyoruz
-        tts = gTTS(text=text, lang='tr', slow=False)
-        fp = io.BytesIO()
-        tts.write_to_fp(fp)
-        fp.seek(0)
-        return fp
-    except: return None
 
 def gorsel_olustur(prompt_text):
     try:
@@ -226,8 +241,7 @@ with st.sidebar:
 st.markdown("<h1 style='text-align: center; color: white;'>BAUN-MYO AI Asistan</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; color: gray;'>Balıkesir Meslek Yüksekokulu AI Asistan.</p>", unsafe_allow_html=True)
 
-# Mesajları Göster - İŞTE DÜZELTME BURADA KRAL
-# enumerate kullanarak 'i' alıyoruz ki her ses dosyasına farklı ID verelim.
+# Mesajları Göster - ARTIK DOSYA OKUYORUZ
 for i, message in enumerate(st.session_state.messages):
     avatar_icon = "👤" if message["role"] == "user" else "🤖"
     with st.chat_message(message["role"], avatar=avatar_icon):
@@ -240,15 +254,16 @@ for i, message in enumerate(st.session_state.messages):
         if message.get("content"):
              st.markdown(message["content"])
 
-        # Kayıtlı ses varsa oynat (Key ekledik ki kaybolmasın)
-        if message.get("audio"):
-            try:
-                audio_bytes = base64_str_to_bytes(message["audio"])
-                # Key parametresi çok önemli! Yoksa streamlit sapıtıyor.
-                st.audio(audio_bytes, format='audio/mpeg', key=f"audio_player_{i}")
-            except Exception as e:
-                # Sessizce geç ama konsola yaz
-                print(f"Ses oynatma hatası {i}: {e}")
+        # --- BURASI DEĞİŞTİ: DOSYA YOLUNDAN SES ÇAL ---
+        # 'audio_path' anahtarını kontrol ediyoruz
+        if message.get("audio_path"):
+            dosya_yolu = message["audio_path"]
+            # Dosya gerçekten var mı diye bakıyoruz
+            if os.path.exists(dosya_yolu):
+                # Unique key şart!
+                st.audio(dosya_yolu, format='audio/mp3', key=f"audio_player_{i}_{uuid.uuid4()}")
+            else:
+                st.warning("⚠️ Ses dosyası süresi dolduğu için silinmiş.")
 
 # --- 9. SES GİRİŞİ ---
 prompt = None
@@ -318,7 +333,7 @@ if prompt:
             bot_reply_text = response.text
 
         generated_image_base64 = None
-        audio_base64 = None 
+        audio_file_path = None # Dosya yolu
         final_content_text = bot_reply_text
 
         if bot_reply_text.strip().startswith("[GORSEL_OLUSTUR]"):
@@ -340,34 +355,21 @@ if prompt:
             with st.chat_message("assistant", avatar="🤖"):
                 st.markdown(final_content_text)
                 
-                # --- SES OLUŞTURMA VE KAYDETME ---
+                # --- SES OLUŞTURMA VE DOSYAYA KAYDETME ---
                 if ses_aktif and final_content_text:
-                    sound_fp = metni_sese_cevir_bytes(final_content_text)
-                    if sound_fp:
-                        audio_bytes = sound_fp.read()
-                        
-                        # Sesi base64'e çevirip değişkene atıyoruz
-                        audio_base64 = bytes_to_base64_str(audio_bytes) 
-                        
-                        # İlk gösterim için key önemli değil ama benzersiz olsa iyi olur
-                        st.audio(audio_bytes, format='audio/mpeg', key=f"new_audio_{len(st.session_state.messages)}")
-                        
-                        # İndirme butonu
-                        st.download_button(
-                            label="🔊 Sesi İndir",
-                            data=audio_bytes,
-                            file_name="yanit.mp3",
-                            mime="audio/mpeg",
-                            use_container_width=True,
-                            key=f"dl_{len(st.session_state.messages)}"
-                        )
+                    # Yeni fonksiyonu kullanıyoruz: Dosyaya yazıyor
+                    audio_file_path = metni_sese_cevir_ve_kaydet(final_content_text)
+                    
+                    if audio_file_path:
+                        # O anlık oynat
+                        st.audio(audio_file_path, format='audio/mp3')
 
-        # Mesajı kaydederken 'audio' alanını da ekliyoruz
+        # Mesajı kaydederken 'audio_path' alanını ekliyoruz
         st.session_state.messages.append({
             "role": "assistant", 
             "content": final_content_text, 
             "image": generated_image_base64,
-            "audio": audio_base64 
+            "audio_path": audio_file_path # <--- DOSYA YOLUNU KAYDETTİK
         })
         
         # Geçmişe kaydetme
