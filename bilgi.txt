@@ -25,10 +25,10 @@ Güçlü Yönler: Okulda güçlü bir akademik kadro ve "İşletmede Mesleki Eğ
 (Yapay Zeka Operatörlüğü Programı bu bölümün altındadır)
 
 Bölüm Akademik Kadrosu (Hocalarımız):
-- Dr. Öğr. Üyesi Erol ÖZÇEKİÇ
-- Öğr.Gör. İlyas Güvenç PİRGE
-- Öğr.Gör. Ali ERFİDAN
-- Öğr.Gör. Mehmet AKDİŞ
+ Dr. Öğr. Üyesi Erol ÖZÇEKİÇ
+ Öğr.Gör. İlyas Güvenç PİRGE
+ Öğr.Gör. Ali ERFİDAN
+ Öğr.Gör. Mehmet AKDİŞ
 
 Bölüm Vizyonu: Matematik, fen ve mühendislik temellerine hakim, PLC, SCADA, Robotik ve Yapay Zeka tabanlı otomasyon sistemlerine uyum sağlayabilen bireyler yetiştirmek.
 Bölümdeki Programlar:
