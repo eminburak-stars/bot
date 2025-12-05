@@ -1,5 +1,7 @@
-streamlit
+streamlit>=1.39.0
 google-generativeai
 Pillow
 edge-tts
 asyncio
+gTTS
+nest_asyncio
