@@ -59,9 +59,18 @@ def temizlik_yap(dakika=30):
 
 temizlik_yap(dakika=30)
 
-# --- 4. SESSION ID ---
+# --- 4. SESSION STATE BAŞLATMA ---
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+if "audio_processed" not in st.session_state:
+    st.session_state.audio_processed = False
+
+if "last_audio_hash" not in st.session_state:
+    st.session_state.last_audio_hash = None
 
 USER_HISTORY_FILE = os.path.join(SESSION_FOLDER, f"history_{st.session_state.session_id}.json")
 
@@ -123,12 +132,16 @@ def base64_to_image(base64_str):
         if base64_str: return Image.open(io.BytesIO(base64.b64decode(base64_str)))
     except: return None
 
-# --- IPHONE UYUMLU SES GİRİŞİ (DÜZELTİLMİŞ) ---
+def get_audio_hash(audio_bytes):
+    """Ses dosyasının hash'ini oluştur (tekrar işlemeyi önlemek için)"""
+    import hashlib
+    return hashlib.md5(audio_bytes).hexdigest()
+
+# --- SES GİRİŞİ (LOOP SORUNU DÜZELTİLDİ) ---
 def sesten_yaziya(audio_bytes):
     """iPhone Safari'den gelen webm/opus formatını işler"""
     r = sr.Recognizer()
     
-    # Geçici dosya oluştur
     with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp_input:
         tmp_input.write(audio_bytes)
         tmp_input_path = tmp_input.name
@@ -136,28 +149,18 @@ def sesten_yaziya(audio_bytes):
     tmp_wav_path = tmp_input_path.replace(".webm", ".wav")
 
     try:
-        # WebM/Opus formatını WAV'a çevir
         audio = AudioSegment.from_file(tmp_input_path, format="webm")
-        
-        # Mono ve 16kHz'e çevir (speech recognition için optimize)
         audio = audio.set_channels(1)
         audio = audio.set_frame_rate(16000)
-        
-        # WAV olarak kaydet
         audio.export(tmp_wav_path, format="wav")
         
-        # Ses tanıma
         with sr.AudioFile(tmp_wav_path) as source:
-            # Ambient gürültüyü filtrele
             r.adjust_for_ambient_noise(source, duration=0.5)
             audio_data = r.record(source)
-            
-            # Google Speech API ile metne çevir
             text = r.recognize_google(audio_data, language="tr-TR")
             return text
             
     except sr.UnknownValueError:
-        st.warning("⚠️ Ses anlaşılamadı. Lütfen daha net konuşun.")
         return None
     except sr.RequestError as e:
         st.error(f"❌ Google Speech API hatası: {e}")
@@ -167,7 +170,6 @@ def sesten_yaziya(audio_bytes):
         return None
         
     finally:
-        # Geçici dosyaları temizle
         try:
             if os.path.exists(tmp_input_path): 
                 os.unlink(tmp_input_path)
@@ -176,7 +178,7 @@ def sesten_yaziya(audio_bytes):
         except:
             pass
 
-# --- SES OLUŞTURMA (Hafızada) ---
+# --- SES OLUŞTURMA ---
 def metni_sese_cevir_bytes(text):
     try:
         tts = gTTS(text=text, lang='tr', slow=False)
@@ -188,7 +190,7 @@ def metni_sese_cevir_bytes(text):
         st.error(f"Ses oluşturma hatası: {e}")
         return None
 
-# GÖRSEL OLUŞTURMA (Ressam)
+# --- GÖRSEL OLUŞTURMA ---
 def gorsel_olustur(prompt_text):
     try:
         result = imagen_model.generate_images(
@@ -208,9 +210,6 @@ def gorsel_olustur(prompt_text):
         return None, str(e)
 
 # --- 7. SIDEBAR ---
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
 with st.sidebar:
     st.title("BAUN MYO")
     st.markdown("---")
@@ -232,6 +231,8 @@ with st.sidebar:
     if st.button("Yeni Sohbet", use_container_width=True):
         st.session_state.messages = []
         st.session_state.current_chat_id = str(uuid.uuid4())
+        st.session_state.audio_processed = False
+        st.session_state.last_audio_hash = None
         st.rerun()
         
     st.markdown("### Geçmiş")
@@ -241,12 +242,16 @@ with st.sidebar:
         if st.button(f"💬 {display_title}", key=chat["id"], use_container_width=True):
             st.session_state.messages = chat["messages"]
             st.session_state.current_chat_id = chat["id"]
+            st.session_state.audio_processed = False
+            st.session_state.last_audio_hash = None
             st.rerun()
             
     st.markdown("---")
     if st.button("Temizle", type="primary", use_container_width=True):
         if os.path.exists(USER_HISTORY_FILE): os.remove(USER_HISTORY_FILE)
         st.session_state.messages = []
+        st.session_state.audio_processed = False
+        st.session_state.last_audio_hash = None
         st.rerun()
 
 # --- 8. ANA EKRAN ---
@@ -263,31 +268,48 @@ for message in st.session_state.messages:
                 if img: st.image(img, width=400, caption="Görsel")
             except: pass
         
-        if message.get("content") and not message.get("image"):
+        if message.get("content"):
              st.markdown(message["content"])
 
-# --- 9. GİRİŞ ALANI ---
+# --- 9. GİRİŞ ALANI (LOOP SORUNU DÜZELTİLDİ) ---
+prompt = None
 audio_value = None
+
 if ses_aktif:
-    st.write("🎙️ **Ses Kaydı (iPhone Uyumlu):**")
-    st.info("ℹ️ Konuşmaya başlamak için mikrofon simgesine basın.")
-    audio_value = st.audio_input("Konuş", key="audio_input")
+    st.write("🎙️ **Ses Kaydı:**")
+    audio_value = st.audio_input("Konuş")
 
 text_input = st.chat_input("Mesajınızı buraya yazın...")
-prompt = None
 
-if ses_aktif and audio_value:
-    with st.spinner("🔄 Sesiniz işleniyor..."):
-        audio_bytes = audio_value.read()
-        if audio_bytes:
-            prompt = sesten_yaziya(audio_bytes)
-            if not prompt: 
-                st.warning("⚠️ Ses anlaşılamadı. Lütfen tekrar deneyin.")
+# SES İŞLEME (TEKRAR ÖNLEME MEKANİZMASI)
+if ses_aktif and audio_value and not st.session_state.audio_processed:
+    audio_bytes = audio_value.read()
+    if audio_bytes:
+        current_hash = get_audio_hash(audio_bytes)
+        
+        # Aynı ses dosyası daha önce işlendiyse işleme
+        if current_hash != st.session_state.last_audio_hash:
+            with st.spinner("🔄 Sesiniz işleniyor..."):
+                prompt = sesten_yaziya(audio_bytes)
+                st.session_state.last_audio_hash = current_hash
+                st.session_state.audio_processed = True
+                
+                if not prompt:
+                    st.warning("⚠️ Ses anlaşılamadı. Lütfen tekrar deneyin.")
+                    st.session_state.audio_processed = False
+                    st.session_state.last_audio_hash = None
 elif text_input:
     prompt = text_input
+    # Metin girişinde ses flag'ini sıfırla
+    st.session_state.audio_processed = False
+    st.session_state.last_audio_hash = None
 
 # --- 10. CEVAP ÜRETME ---
 if prompt:
+    # Ses işleme flag'ini sıfırla (yeni kayıt için hazır)
+    if ses_aktif:
+        st.session_state.audio_processed = False
+    
     saved_image_base64 = None
     saved_image_for_api = None
     if current_image:
@@ -324,7 +346,6 @@ if prompt:
 
         generated_image_base64 = None
         final_content_text = bot_reply_text
-        hata_mesaji = None
 
         if bot_reply_text.strip().startswith("[GORSEL_OLUSTUR]"):
             imagen_prompt = bot_reply_text.replace("[GORSEL_OLUSTUR]", "").strip()
@@ -334,7 +355,7 @@ if prompt:
                 
                 if generated_img:
                     generated_image_base64 = image_to_base64(generated_img)
-                    final_content_text = "" 
+                    final_content_text = ""
                     with st.chat_message("assistant", avatar="🤖"):
                         st.image(generated_img, width=400, caption="Oluşturulan Görsel")
                 else:
@@ -351,17 +372,14 @@ if prompt:
                         if sound_fp:
                             audio_bytes = sound_fp.read()
                             
-                            # iPhone için download butonu (en güvenilir yöntem)
                             st.download_button(
                                 label="🔊 Yanıtı Sesli Dinle",
                                 data=audio_bytes,
-                                file_name=f"yanit_{uuid.uuid4()}.mp3",
+                                file_name=f"yanit.mp3",
                                 mime="audio/mpeg",
-                                key=f"audio_{uuid.uuid4()}",
                                 use_container_width=True
                             )
                             
-                            # Alternatif: Native oynatıcı (bazı cihazlarda çalışabilir)
                             st.audio(audio_bytes, format='audio/mpeg')
 
         st.session_state.messages.append({
@@ -390,4 +408,3 @@ if prompt:
 
     except Exception as e:
         st.error(f"❌ Bir hata oluştu: {e}")
-        st.info("Lütfen tekrar deneyin veya geliştiriciyle iletişime geçin.")
