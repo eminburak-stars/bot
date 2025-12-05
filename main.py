@@ -123,10 +123,12 @@ def base64_to_image(base64_str):
         if base64_str: return Image.open(io.BytesIO(base64.b64decode(base64_str)))
     except: return None
 
-# --- IPHONE UYUMLU SES GİRİŞİ ---
+# --- IPHONE UYUMLU SES GİRİŞİ (DÜZELTİLMİŞ) ---
 def sesten_yaziya(audio_bytes):
+    """iPhone Safari'den gelen webm/opus formatını işler"""
     r = sr.Recognizer()
     
+    # Geçici dosya oluştur
     with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp_input:
         tmp_input.write(audio_bytes)
         tmp_input_path = tmp_input.name
@@ -134,31 +136,57 @@ def sesten_yaziya(audio_bytes):
     tmp_wav_path = tmp_input_path.replace(".webm", ".wav")
 
     try:
-        audio = AudioSegment.from_file(tmp_input_path) 
+        # WebM/Opus formatını WAV'a çevir
+        audio = AudioSegment.from_file(tmp_input_path, format="webm")
+        
+        # Mono ve 16kHz'e çevir (speech recognition için optimize)
+        audio = audio.set_channels(1)
+        audio = audio.set_frame_rate(16000)
+        
+        # WAV olarak kaydet
         audio.export(tmp_wav_path, format="wav")
         
+        # Ses tanıma
         with sr.AudioFile(tmp_wav_path) as source:
+            # Ambient gürültüyü filtrele
+            r.adjust_for_ambient_noise(source, duration=0.5)
             audio_data = r.record(source)
+            
+            # Google Speech API ile metne çevir
             text = r.recognize_google(audio_data, language="tr-TR")
             return text
             
+    except sr.UnknownValueError:
+        st.warning("⚠️ Ses anlaşılamadı. Lütfen daha net konuşun.")
+        return None
+    except sr.RequestError as e:
+        st.error(f"❌ Google Speech API hatası: {e}")
+        return None
     except Exception as e:
-        print(f"Ses İşleme Hatası: {e}") 
+        st.error(f"❌ Ses işleme hatası: {e}")
         return None
         
     finally:
-        if os.path.exists(tmp_input_path): os.unlink(tmp_input_path)
-        if os.path.exists(tmp_wav_path): os.unlink(tmp_wav_path)
+        # Geçici dosyaları temizle
+        try:
+            if os.path.exists(tmp_input_path): 
+                os.unlink(tmp_input_path)
+            if os.path.exists(tmp_wav_path): 
+                os.unlink(tmp_wav_path)
+        except:
+            pass
 
 # --- SES OLUŞTURMA (Hafızada) ---
 def metni_sese_cevir_bytes(text):
     try:
-        tts = gTTS(text=text, lang='tr')
+        tts = gTTS(text=text, lang='tr', slow=False)
         fp = io.BytesIO()
         tts.write_to_fp(fp)
         fp.seek(0)
         return fp
-    except: return None
+    except Exception as e:
+        st.error(f"Ses oluşturma hatası: {e}")
+        return None
 
 # GÖRSEL OLUŞTURMA (Ressam)
 def gorsel_olustur(prompt_text):
@@ -193,9 +221,10 @@ with st.sidebar:
     if uploaded_file:
         try:
             current_image = Image.open(uploaded_file)
-            st.success("Görsel yüklendi.")
+            st.success("✅ Görsel yüklendi.")
             st.image(current_image, use_container_width=True)
-        except: st.error("Hata")
+        except: 
+            st.error("❌ Görsel yüklenemedi")
             
     st.markdown("---")
     ses_aktif = st.toggle("🎤 Sesli Yanıt", value=False)
@@ -240,16 +269,20 @@ for message in st.session_state.messages:
 # --- 9. GİRİŞ ALANI ---
 audio_value = None
 if ses_aktif:
-    st.write("🎙️ **Mikrofon:**")
-    audio_value = st.audio_input("Konuş")
+    st.write("🎙️ **Ses Kaydı (iPhone Uyumlu):**")
+    st.info("ℹ️ Konuşmaya başlamak için mikrofon simgesine basın.")
+    audio_value = st.audio_input("Konuş", key="audio_input")
 
 text_input = st.chat_input("Mesajınızı buraya yazın...")
 prompt = None
 
 if ses_aktif and audio_value:
-    with st.spinner("Sesiniz işleniyor..."):
-        prompt = sesten_yaziya(audio_value.read())
-        if not prompt: st.warning("Ses anlaşılamadı.")
+    with st.spinner("🔄 Sesiniz işleniyor..."):
+        audio_bytes = audio_value.read()
+        if audio_bytes:
+            prompt = sesten_yaziya(audio_bytes)
+            if not prompt: 
+                st.warning("⚠️ Ses anlaşılamadı. Lütfen tekrar deneyin.")
 elif text_input:
     prompt = text_input
 
@@ -270,7 +303,7 @@ if prompt:
     })
 
     try:
-        with st.spinner('Asistan düşünüyor...'):
+        with st.spinner('🤔 Asistan düşünüyor...'):
             chat_history_text = []
             for m in st.session_state.messages[:-1]:
                 msg_content = m.get("content", "")
@@ -312,28 +345,24 @@ if prompt:
             with st.chat_message("assistant", avatar="🤖"):
                 st.markdown(final_content_text)
                 
-                if ses_aktif:
-                    # --- NİHAİ IPHONE ÇÖZÜMÜ ---
-                    sound_fp = metni_sese_cevir_bytes(final_content_text)
-                    if sound_fp:
-                        # 1. Byte verisini al
-                        audio_bytes = sound_fp.read()
-                        
-                        # 2. Native Oynatıcı (Görünür ama iPhone'da hata verebilir)
-                        # NOT: Key her seferinde değişmeli ki yeni ses yüklensin
-                        st.audio(audio_bytes, format='audio/mpeg', start_time=0)
-                        
-                        # 3. KESİN ÇÖZÜM BUTONU
-                        # Oynatıcı hata verirse bu butona bas, sistem player'ı açılır.
-                        st.download_button(
-                            label="🔊 Sesi Dinlemek İçin Tıkla",
-                            data=audio_bytes,
-                            file_name=f"yanit_{uuid.uuid4()}.mp3",
-                            mime="audio/mpeg",
-                            key=f"dl_{uuid.uuid4()}"
-                        )
-                    else:
-                        st.warning("Ses oluşturulamadı.")
+                if ses_aktif and final_content_text:
+                    with st.spinner("🔊 Ses oluşturuluyor..."):
+                        sound_fp = metni_sese_cevir_bytes(final_content_text)
+                        if sound_fp:
+                            audio_bytes = sound_fp.read()
+                            
+                            # iPhone için download butonu (en güvenilir yöntem)
+                            st.download_button(
+                                label="🔊 Yanıtı Sesli Dinle",
+                                data=audio_bytes,
+                                file_name=f"yanit_{uuid.uuid4()}.mp3",
+                                mime="audio/mpeg",
+                                key=f"audio_{uuid.uuid4()}",
+                                use_container_width=True
+                            )
+                            
+                            # Alternatif: Native oynatıcı (bazı cihazlarda çalışabilir)
+                            st.audio(audio_bytes, format='audio/mpeg')
 
         st.session_state.messages.append({
             "role": "assistant", "content": final_content_text, "image": generated_image_base64
@@ -360,4 +389,5 @@ if prompt:
         save_history(current_history)
 
     except Exception as e:
-        st.error(f"Bir hata oluştu: {e}")
+        st.error(f"❌ Bir hata oluştu: {e}")
+        st.info("Lütfen tekrar deneyin veya geliştiriciyle iletişime geçin.")
