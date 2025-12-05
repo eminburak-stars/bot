@@ -129,13 +129,11 @@ def base64_to_image(base64_str):
         if base64_str: return Image.open(io.BytesIO(base64.b64decode(base64_str)))
     except: return None
 
-# --- YENİ EKLENEN FONKSİYONLAR (SES İÇİN) ---
+# SES İÇİN YARDIMCI FONKSİYONLAR
 def bytes_to_base64_str(data_bytes):
-    """Ses verisini string olarak kaydetmek için"""
     return base64.b64encode(data_bytes).decode('utf-8')
 
 def base64_str_to_bytes(data_str):
-    """String veriyi sese çevirmek için"""
     return base64.b64decode(data_str.encode('utf-8'))
 
 # --- SES İŞLEME ---
@@ -153,6 +151,7 @@ def sesten_yaziya(audio_bytes):
 
 def metni_sese_cevir_bytes(text):
     try:
+        # Sadece okuma için gTTS kullanıyoruz
         tts = gTTS(text=text, lang='tr', slow=False)
         fp = io.BytesIO()
         tts.write_to_fp(fp)
@@ -223,12 +222,13 @@ with st.sidebar:
         st.session_state.process_audio = False
         st.rerun()
 
-# --- 8. ANA EKRAN ---
+# --- 8. ANA EKRAN (GÜNCELLENDİ) ---
 st.markdown("<h1 style='text-align: center; color: white;'>BAUN-MYO AI Asistan</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; color: gray;'>Balıkesir Meslek Yüksekokulu AI Asistan.</p>", unsafe_allow_html=True)
 
-# Mesajları Göster
-for message in st.session_state.messages:
+# Mesajları Göster - İŞTE DÜZELTME BURADA KRAL
+# enumerate kullanarak 'i' alıyoruz ki her ses dosyasına farklı ID verelim.
+for i, message in enumerate(st.session_state.messages):
     avatar_icon = "👤" if message["role"] == "user" else "🤖"
     with st.chat_message(message["role"], avatar=avatar_icon):
         if message.get("image"):
@@ -240,12 +240,15 @@ for message in st.session_state.messages:
         if message.get("content"):
              st.markdown(message["content"])
 
-        # --- BURASI DÜZELTİLDİ: KAYITLI SES VARSA OYNAT ---
+        # Kayıtlı ses varsa oynat (Key ekledik ki kaybolmasın)
         if message.get("audio"):
             try:
                 audio_bytes = base64_str_to_bytes(message["audio"])
-                st.audio(audio_bytes, format='audio/mpeg')
-            except: pass
+                # Key parametresi çok önemli! Yoksa streamlit sapıtıyor.
+                st.audio(audio_bytes, format='audio/mpeg', key=f"audio_player_{i}")
+            except Exception as e:
+                # Sessizce geç ama konsola yaz
+                print(f"Ses oynatma hatası {i}: {e}")
 
 # --- 9. SES GİRİŞİ ---
 prompt = None
@@ -315,7 +318,7 @@ if prompt:
             bot_reply_text = response.text
 
         generated_image_base64 = None
-        audio_base64 = None # Ses verisi için değişken
+        audio_base64 = None 
         final_content_text = bot_reply_text
 
         if bot_reply_text.strip().startswith("[GORSEL_OLUSTUR]"):
@@ -346,25 +349,28 @@ if prompt:
                         # Sesi base64'e çevirip değişkene atıyoruz
                         audio_base64 = bytes_to_base64_str(audio_bytes) 
                         
-                        # İndirme butonu ve oynatıcı (O anlık gösterim)
+                        # İlk gösterim için key önemli değil ama benzersiz olsa iyi olur
+                        st.audio(audio_bytes, format='audio/mpeg', key=f"new_audio_{len(st.session_state.messages)}")
+                        
+                        # İndirme butonu
                         st.download_button(
-                            label="🔊 Yanıtı Sesli Dinle",
+                            label="🔊 Sesi İndir",
                             data=audio_bytes,
                             file_name="yanit.mp3",
                             mime="audio/mpeg",
-                            use_container_width=True
+                            use_container_width=True,
+                            key=f"dl_{len(st.session_state.messages)}"
                         )
-                        
-                        st.audio(audio_bytes, format='audio/mpeg')
 
         # Mesajı kaydederken 'audio' alanını da ekliyoruz
         st.session_state.messages.append({
             "role": "assistant", 
             "content": final_content_text, 
             "image": generated_image_base64,
-            "audio": audio_base64 # <--- KRAL HAMLE BURASI
+            "audio": audio_base64 
         })
         
+        # Geçmişe kaydetme
         current_history = load_history()
         chat_exists = False
         if "current_chat_id" not in st.session_state:
