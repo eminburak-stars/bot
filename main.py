@@ -7,7 +7,8 @@ import time
 from datetime import datetime
 from PIL import Image
 import io
-from gtts import gTTS 
+import asyncio
+import edge_tts # YENİ KRAL KÜTÜPHANE BU
 
 # --- 1. SAYFA AYARLARI ---
 st.set_page_config(
@@ -37,7 +38,7 @@ section[data-testid="stSidebar"] {background-color: #161b22 !important; border-r
 """
 st.markdown(custom_style, unsafe_allow_html=True)
 
-# --- 3. KLASÖR VE TEMİZLİK (Sadece Sohbet Geçmişi İçin) ---
+# --- 3. KLASÖR VE TEMİZLİK ---
 SESSION_FOLDER = "sessions"
 if not os.path.exists(SESSION_FOLDER):
     os.makedirs(SESSION_FOLDER)
@@ -72,7 +73,6 @@ USER_HISTORY_FILE = os.path.join(SESSION_FOLDER, f"history_{st.session_state.ses
 
 # --- 5. API ---
 def bilgi_bankasini_oku():
-    # Basit hata önleme
     try:
         if os.path.exists("bilgi.txt"):
             with open("bilgi.txt", "r", encoding="utf-8") as f:
@@ -114,24 +114,37 @@ def save_history(history):
         json.dump(history, f, ensure_ascii=False, indent=4)
 
 def image_to_bytes(image):
-    # Görseli byte olarak sakla (Base64 yerine byte kullanıyoruz artık daha temiz)
     try:
         buf = io.BytesIO()
         image.save(buf, format="PNG")
         return buf.getvalue()
     except: return None
 
-# --- YENİ: SADECE SES VERİSİ ÜRETEN FONKSİYON ---
-def metni_sese_cevir_bytes(text):
-    """Sesi RAM üzerinde oluşturur ve bytes olarak döner. Disk kullanmaz."""
+# --- YENİ VE GÜÇLÜ SES MOTORU (EDGE-TTS) ---
+async def edge_tts_generate(text, voice):
+    """Sesi asenkron olarak oluşturur (Microsoft Neural Voice)"""
+    communicate = edge_tts.Communicate(text, voice)
+    mp3_fp = io.BytesIO()
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            mp3_fp.write(chunk["data"])
+    mp3_fp.seek(0)
+    return mp3_fp
+
+def metni_sese_cevir_bytes(text, voice_id="tr-TR-AhmetNeural"):
+    """
+    Streamlit (senkron) içinden Async fonksiyonu çalıştırır.
+    RAM üzerinde sesi oluşturur, diske yazmaz.
+    """
     try:
-        tts = gTTS(text=text, lang='tr', slow=False)
-        fp = io.BytesIO()
-        tts.write_to_fp(fp)
-        fp.seek(0)
-        return fp
+        # Yeni bir event loop oluşturup çalıştırıyoruz
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        audio_fp = loop.run_until_complete(edge_tts_generate(text, voice_id))
+        loop.close()
+        return audio_fp
     except Exception as e:
-        print(f"TTS Hatası: {e}")
+        st.error(f"Ses Hatası: {e}")
         return None
 
 # --- SES İŞLEME (INPUT) ---
@@ -180,7 +193,16 @@ with st.sidebar:
             
     st.markdown("---")
     ses_aktif = st.toggle("🎤 Sesli Yanıt", value=False)
+
+    # --- SES SEÇİMİ EKLEDİM KRAL ---
+    if ses_aktif:
+        voice_choice = st.radio("Ses Tonu", ["Erkek (Ahmet)", "Kadın (Emel)"], index=0)
+        # Microsoft Edge Ses Kodları
+        voice_id = "tr-TR-AhmetNeural" if "Ahmet" in voice_choice else "tr-TR-EmelNeural"
+    else:
+        voice_id = "tr-TR-AhmetNeural"
     
+    st.markdown("---")
     if st.button("Yeni Sohbet", use_container_width=True):
         st.session_state.messages = []
         st.session_state.current_chat_id = str(uuid.uuid4())
@@ -210,7 +232,6 @@ st.markdown("<h1 style='text-align: center; color: white;'>BAUN-MYO AI Asistan</
 for i, message in enumerate(st.session_state.messages):
     avatar = "👤" if message["role"] == "user" else "🤖"
     with st.chat_message(message["role"], avatar=avatar):
-        # Görsel varsa göster (Bytes'tan oku)
         if message.get("image_bytes"):
             try:
                 st.image(message["image_bytes"], width=300)
@@ -218,11 +239,8 @@ for i, message in enumerate(st.session_state.messages):
         
         st.markdown(message["content"])
 
-        # --- EN TEMİZ SES OYNATMA YÖNTEMİ ---
-        # Sadece son mesajsa veya kullanıcı isterse çalsın diye karmaşık HTML yapmadık.
-        # Direkt Streamlit'in kendi player'ını kullanıyoruz.
+        # Ses varsa Streamlit Player ile oynat
         if message.get("audio_bytes"):
-            # iPhone için MIME type: audio/mpeg çok önemlidir.
             st.audio(message["audio_bytes"], format="audio/mpeg")
 
 # --- 9. SES GİRİŞİ ---
@@ -230,7 +248,6 @@ prompt = None
 
 if ses_aktif:
     st.markdown("---")
-    # iPhone HTTPS zorunluluğu vardır. Localhost'ta mikrofon çalışmayabilir.
     audio_val = st.audio_input("🎙️ Ses Kaydet")
     
     if audio_val:
@@ -256,7 +273,6 @@ if text_input:
 
 # --- 10. CEVAP ÜRETME ---
 if prompt:
-    # Kullanıcı mesajını kaydet
     user_img_bytes = None
     if current_image:
         user_img_bytes = image_to_bytes(current_image)
@@ -267,12 +283,10 @@ if prompt:
         "image_bytes": user_img_bytes
     })
     
-    # Ekrana bas
     with st.chat_message("user", avatar="👤"):
         st.markdown(prompt)
         if user_img_bytes: st.image(user_img_bytes, width=300)
 
-    # Modelden cevap al
     try:
         with st.spinner('Yazıyor...'):
             history_formatted = []
@@ -291,7 +305,6 @@ if prompt:
             
             bot_text = response.text
 
-        # Görsel mi Metin mi?
         final_text = bot_text
         gen_img_bytes = None
         voice_data = None
@@ -302,7 +315,7 @@ if prompt:
                 img_obj, err = gorsel_olustur(img_prompt)
                 if img_obj:
                     gen_img_bytes = image_to_bytes(img_obj)
-                    final_text = "" # Görsel varsa metni boşalt
+                    final_text = ""
                     with st.chat_message("assistant", avatar="🤖"):
                         st.image(img_obj, caption="AI Görseli")
                 else:
@@ -313,20 +326,17 @@ if prompt:
             with st.chat_message("assistant", avatar="🤖"):
                 st.markdown(final_text)
                 
-                # SES OLUŞTURMA (RAM ÜZERİNDE)
+                # --- YENİ SES OLUŞTURMA KISMI (EDGE TTS) ---
                 if ses_aktif and final_text:
                     try:
-                        # BytesIO nesnesi döner
-                        audio_bio = metni_sese_cevir_bytes(final_text)
+                        # Seçilen ses tonuna göre oluştur (voice_id)
+                        audio_bio = metni_sese_cevir_bytes(final_text, voice_id)
                         if audio_bio:
-                            # Streamlit Player'a BytesIO veriyoruz
                             st.audio(audio_bio, format="audio/mpeg")
-                            # Kayıt için bytes'a çeviriyoruz
                             voice_data = audio_bio.getvalue() 
                     except Exception as e:
                         st.warning(f"Ses hatası: {e}")
 
-        # Asistan mesajını kaydet
         st.session_state.messages.append({
             "role": "assistant", 
             "content": final_text, 
@@ -334,13 +344,9 @@ if prompt:
             "audio_bytes": voice_data
         })
         
-        # Geçmişe Yaz (JSON serializable olması için bytes'ı yoksayıyoruz şimdilik, history dosyası şişmesin)
-        # Basit history kaydı
         hist = load_history()
         chat_id = st.session_state.current_chat_id
         
-        # History'de bytes saklamak zor olduğu için sadece metinleri saklayalım
-        # Karmaşık JSON encode hatası almamak için simple_msgs oluşturuyoruz
         simple_msgs = []
         for m in st.session_state.messages:
             simple_msgs.append({"role": m["role"], "content": m["content"]})
