@@ -37,72 +37,18 @@ section[data-testid="stSidebar"] {background-color: #161b22 !important; border-r
 [data-testid="stChatMessage"]:nth-of-type(even) {background-color: #1f6feb; color: white; border-radius: 20px 0px 20px 20px; padding: 15px; margin-bottom: 10px; border: none;}
 [data-testid="stChatMessage"]:nth-of-type(even) * {color: white !important;}
 .stChatInputContainer textarea {background-color: #161b22; color: white; border: 1px solid #30363d; border-radius: 12px;}
-
-/* Ses Oynatıcı Stilleri */
-.audio-player {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-radius: 12px;
-    padding: 15px;
-    margin: 10px 0;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-}
-.audio-player audio {
-    width: 100%;
-    border-radius: 8px;
-    margin-bottom: 10px;
-}
-.play-button {
-    background: white;
-    color: #667eea;
-    border: none;
-    padding: 12px 24px;
-    border-radius: 8px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.3s;
-    font-size: 16px;
-    width: 100%;
-}
-.play-button:hover {
-    transform: scale(1.05);
-    box-shadow: 0 6px 12px rgba(0,0,0,0.2);
-}
-.download-link {
-    display: inline-block;
-    padding: 10px 20px;
-    background: rgba(255,255,255,0.2);
-    color: white;
-    text-decoration: none;
-    border-radius: 8px;
-    margin-top: 8px;
-    font-weight: 600;
-    transition: all 0.3s;
-}
-.download-link:hover {
-    background: rgba(255,255,255,0.3);
-}
 </style>
 """
 st.markdown(custom_style, unsafe_allow_html=True)
 
 # --- 3. KLASÖR VE TEMİZLİK ---
 SESSION_FOLDER = "sessions"
-AUDIO_FOLDER = "audio_files"
-
-for folder in [SESSION_FOLDER, AUDIO_FOLDER]:
-    if not os.path.exists(folder):
-        os.makedirs(folder)
+if not os.path.exists(SESSION_FOLDER):
+    os.makedirs(SESSION_FOLDER)
 
 def temizlik_yap(dakika=30):
     su_an = time.time()
     try:
-        for dosya in os.listdir(AUDIO_FOLDER):
-            if dosya.endswith(".mp3"):
-                dosya_yolu = os.path.join(AUDIO_FOLDER, dosya)
-                if (su_an - os.path.getmtime(dosya_yolu)) > (dakika * 60):
-                    try: os.remove(dosya_yolu)
-                    except: pass
-        
         for dosya in os.listdir(SESSION_FOLDER):
             if dosya.endswith(".json"):
                 dosya_yolu = os.path.join(SESSION_FOLDER, dosya)
@@ -177,7 +123,7 @@ def base64_to_image(base64_str):
         if base64_str: return Image.open(io.BytesIO(base64.b64decode(base64_str)))
     except: return None
 
-# --- SES GİRİŞİ ---
+# --- IPHONE UYUMLU SES GİRİŞİ ---
 def sesten_yaziya(audio_bytes):
     r = sr.Recognizer()
     
@@ -204,59 +150,17 @@ def sesten_yaziya(audio_bytes):
         if os.path.exists(tmp_input_path): os.unlink(tmp_input_path)
         if os.path.exists(tmp_wav_path): os.unlink(tmp_wav_path)
 
-# --- SES ÇIKIŞI (ULTIMATE ÇÖZÜM) ---
-def text_to_audio_base64(text):
-    """Base64 formatında ses döndürür (iPhone uyumlu)"""
+# --- SES OLUŞTURMA (Hafızada) ---
+def metni_sese_cevir_bytes(text):
     try:
-        tts = gTTS(text=text, lang='tr', slow=False)
+        tts = gTTS(text=text, lang='tr')
         fp = io.BytesIO()
         tts.write_to_fp(fp)
         fp.seek(0)
-        return base64.b64encode(fp.read()).decode()
-    except Exception as e:
-        print(f"Ses oluşturma hatası: {e}")
-        return None
+        return fp
+    except: return None
 
-def render_audio_player(audio_base64):
-    """iPhone Safari uyumlu gelişmiş ses oynatıcı"""
-    audio_id = f"audio_{uuid.uuid4().hex[:8]}"
-    
-    html = f"""
-    <div class="audio-player">
-        <audio id="{audio_id}" preload="auto">
-            <source src="data:audio/mpeg;base64,{audio_base64}" type="audio/mpeg">
-        </audio>
-        
-        <button class="play-button" onclick="playAudio_{audio_id}()">
-            ▶️ Sesi Oynat
-        </button>
-        
-        <a href="data:audio/mpeg;base64,{audio_base64}" 
-           download="yanit.mp3" 
-           class="download-link">
-            📥 İndir (iPhone için)
-        </a>
-        
-        <script>
-        function playAudio_{audio_id}() {{
-            var audio = document.getElementById('{audio_id}');
-            if (audio.paused) {{
-                audio.play().then(() => {{
-                    console.log('Ses oynatılıyor');
-                }}).catch(e => {{
-                    console.error('Oynatma hatası:', e);
-                    alert('Ses oynatılamadı. Lütfen indirme linkini kullanın.');
-                }});
-            }} else {{
-                audio.pause();
-            }}
-        }}
-        </script>
-    </div>
-    """
-    st.markdown(html, unsafe_allow_html=True)
-
-# GÖRSEL OLUŞTURMA
+# GÖRSEL OLUŞTURMA (Ressam)
 def gorsel_olustur(prompt_text):
     try:
         result = imagen_model.generate_images(
@@ -408,19 +312,28 @@ if prompt:
             with st.chat_message("assistant", avatar="🤖"):
                 st.markdown(final_content_text)
                 
-                # --- ULTIMATE SES ÇÖZÜMÜ (IPHONE UYUMLU) ---
-                if ses_aktif and final_content_text.strip():
-                    with st.spinner("🔊 Ses hazırlanıyor..."):
-                        audio_base64 = text_to_audio_base64(final_content_text)
-                    
-                    if audio_base64:
-                        # Özel oynatıcı render et
-                        render_audio_player(audio_base64)
+                if ses_aktif:
+                    # --- NİHAİ IPHONE ÇÖZÜMÜ ---
+                    sound_fp = metni_sese_cevir_bytes(final_content_text)
+                    if sound_fp:
+                        # 1. Byte verisini al
+                        audio_bytes = sound_fp.read()
                         
-                        # Ek bilgi
-                        st.info("💡 **iPhone kullanıcıları:** 'Sesi Oynat' butonu çalışmazsa '📥 İndir' linkine tıklayın")
+                        # 2. Native Oynatıcı (Görünür ama iPhone'da hata verebilir)
+                        # NOT: Key her seferinde değişmeli ki yeni ses yüklensin
+                        st.audio(audio_bytes, format='audio/mpeg', start_time=0)
+                        
+                        # 3. KESİN ÇÖZÜM BUTONU
+                        # Oynatıcı hata verirse bu butona bas, sistem player'ı açılır.
+                        st.download_button(
+                            label="🔊 Sesi Dinlemek İçin Tıkla",
+                            data=audio_bytes,
+                            file_name=f"yanit_{uuid.uuid4()}.mp3",
+                            mime="audio/mpeg",
+                            key=f"dl_{uuid.uuid4()}"
+                        )
                     else:
-                        st.error("⚠️ Ses oluşturulamadı")
+                        st.warning("Ses oluşturulamadı.")
 
         st.session_state.messages.append({
             "role": "assistant", "content": final_content_text, "image": generated_image_base64
