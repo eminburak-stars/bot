@@ -43,6 +43,7 @@ SESSION_FOLDER = "sessions"
 if not os.path.exists(SESSION_FOLDER):
     os.makedirs(SESSION_FOLDER)
 
+# (Artık ses dosyası kaydetmek zorunda değiliz ama yine de hata vermesin diye klasör kalsın)
 AUDIO_FOLDER = "sesler"
 if not os.path.exists(AUDIO_FOLDER):
     os.makedirs(AUDIO_FOLDER)
@@ -56,14 +57,6 @@ def temizlik_yap(dakika=60):
                 if (su_an - os.path.getmtime(dosya_yolu)) > (dakika * 60):
                     try: os.remove(dosya_yolu)
                     except: pass
-    except: pass
-    
-    try:
-        for dosya in os.listdir(AUDIO_FOLDER):
-            dosya_yolu = os.path.join(AUDIO_FOLDER, dosya)
-            if (su_an - os.path.getmtime(dosya_yolu)) > (dakika * 60):
-                try: os.remove(dosya_yolu)
-                except: pass
     except: pass
 
 temizlik_yap(dakika=60)
@@ -141,32 +134,37 @@ def base64_to_image(base64_str):
         if base64_str: return Image.open(io.BytesIO(base64.b64decode(base64_str)))
     except: return None
 
-def metni_sese_cevir_ve_kaydet(text):
+# --- YENİ SES OYNATMA FONKSİYONU (BASE64 İLE - EN SAĞLAM YÖNTEM) ---
+def metni_sese_cevir_ve_oynat(text, autoplay=True):
+    """
+    Metni sese çevirir ve HTML5 player olarak sayfaya gömer.
+    Dosya kaydetmez, hafızadan okur. iPhone dostudur.
+    """
     try:
-        dosya_adi = f"ses_{uuid.uuid4()}.mp3"
-        dosya_yolu = os.path.join(AUDIO_FOLDER, dosya_adi)
-        
+        # Hafızada ses oluştur
         tts = gTTS(text=text, lang='tr', slow=False)
-        tts.save(dosya_yolu)
+        fp = io.BytesIO()
+        tts.write_to_fp(fp)
+        fp.seek(0)
         
-        return dosya_yolu 
-    except Exception as e: 
-        print(f"Ses kaydetme hatası: {e}")
+        # Base64'e çevir
+        b64 = base64.b64encode(fp.read()).decode()
+        
+        # HTML Player oluştur
+        # iPhone autoplay'i bazen engeller, controls ekledik ki elle de basılabilsin.
+        autoplay_attr = "autoplay" if autoplay else ""
+        md = f"""
+            <audio controls {autoplay_attr} style="width: 100%;">
+            <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
+            </audio>
+            """
+        st.markdown(md, unsafe_allow_html=True)
+        
+        # Geçmişe kaydetmek için base64 string'i dönüyoruz
+        return b64
+    except Exception as e:
+        print(f"Ses hatası: {e}")
         return None
-
-# --- YENİ SES OYNATMA FONKSİYONU (IPHONE FIX) ---
-def sesi_oynat(dosya_yolu, unique_key):
-    """Dosyayı byte olarak okur ve st.audio'ya verir. iPhone dostudur."""
-    if os.path.exists(dosya_yolu):
-        try:
-            with open(dosya_yolu, "rb") as f:
-                audio_bytes = f.read()
-            # Formatı 'audio/mpeg' yaptık, iPhone bunu sever.
-            st.audio(audio_bytes, format='audio/mpeg', key=unique_key)
-        except Exception as e:
-            st.warning(f"Ses oynatılamadı: {e}")
-    else:
-        st.warning("⚠️ Ses dosyası bulunamadı.")
 
 # --- SES İŞLEME (INPUT) ---
 def sesten_yaziya(audio_bytes):
@@ -261,10 +259,16 @@ for i, message in enumerate(st.session_state.messages):
         if message.get("content"):
              st.markdown(message["content"])
 
-        # --- IPHONE FIX: DOSYAYI OKUYUP OYNAT ---
-        if message.get("audio_path"):
-            unique_key = f"audio_player_{i}_{uuid.uuid4()}"
-            sesi_oynat(message["audio_path"], unique_key)
+        # --- ESKİ SESLERİ DE BASE64 İLE OYNAT (GEÇMİŞ) ---
+        if message.get("audio_base64"):
+            b64_data = message["audio_base64"]
+            # Geçmişteki mesajlar otomatik çalmasın, kafa ütülemesin (autoplay=False)
+            md = f"""
+                <audio controls style="width: 100%;">
+                <source src="data:audio/mp3;base64,{b64_data}" type="audio/mp3">
+                </audio>
+                """
+            st.markdown(md, unsafe_allow_html=True)
 
 # --- 9. SES GİRİŞİ ---
 prompt = None
@@ -335,7 +339,7 @@ if prompt:
             bot_reply_text = response.text
 
         generated_image_base64 = None
-        audio_file_path = None
+        audio_b64_data = None
         final_content_text = bot_reply_text
 
         if bot_reply_text.strip().startswith("[GORSEL_OLUSTUR]"):
@@ -357,18 +361,16 @@ if prompt:
             with st.chat_message("assistant", avatar="🤖"):
                 st.markdown(final_content_text)
                 
-                # --- SES OLUŞTURMA VE OYNATMA ---
+                # --- YENİ SES OYNATMA (FIXED) ---
                 if ses_aktif and final_content_text:
-                    audio_file_path = metni_sese_cevir_ve_kaydet(final_content_text)
-                    if audio_file_path:
-                        # iPhone için yeni oynatma fonksiyonunu kullanıyoruz
-                        sesi_oynat(audio_file_path, f"audio_new_{uuid.uuid4()}")
+                    # Bu fonksiyon hem oynatır hem base64 datasını döner
+                    audio_b64_data = metni_sese_cevir_ve_oynat(final_content_text, autoplay=True)
 
         st.session_state.messages.append({
             "role": "assistant", 
             "content": final_content_text, 
             "image": generated_image_base64,
-            "audio_path": audio_file_path 
+            "audio_base64": audio_b64_data # Dosya yolu değil, direkt veriyi kaydediyoruz
         })
         
         current_history = load_history()
