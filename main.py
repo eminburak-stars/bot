@@ -7,7 +7,6 @@ import time
 from datetime import datetime
 from PIL import Image
 import io
-import base64
 from gtts import gTTS 
 
 # --- 1. SAYFA AYARLARI ---
@@ -38,15 +37,10 @@ section[data-testid="stSidebar"] {background-color: #161b22 !important; border-r
 """
 st.markdown(custom_style, unsafe_allow_html=True)
 
-# --- 3. KLASÖR VE TEMİZLİK ---
+# --- 3. KLASÖR VE TEMİZLİK (Sadece Sohbet Geçmişi İçin) ---
 SESSION_FOLDER = "sessions"
 if not os.path.exists(SESSION_FOLDER):
     os.makedirs(SESSION_FOLDER)
-
-# (Artık ses dosyası kaydetmek zorunda değiliz ama yine de hata vermesin diye klasör kalsın)
-AUDIO_FOLDER = "sesler"
-if not os.path.exists(AUDIO_FOLDER):
-    os.makedirs(AUDIO_FOLDER)
 
 def temizlik_yap(dakika=60):
     su_an = time.time()
@@ -78,14 +72,13 @@ USER_HISTORY_FILE = os.path.join(SESSION_FOLDER, f"history_{st.session_state.ses
 
 # --- 5. API ---
 def bilgi_bankasini_oku():
-    dosya_yolu = "bilgi.txt"
-    varsayilan = "Sen bir yapay zeka asistanısın."
-    if os.path.exists(dosya_yolu):
-        try:
-            with open(dosya_yolu, "r", encoding="utf-8") as f:
+    # Basit hata önleme
+    try:
+        if os.path.exists("bilgi.txt"):
+            with open("bilgi.txt", "r", encoding="utf-8") as f:
                 return f.read()
-        except: return varsayilan
-    return varsayilan
+    except: pass
+    return "Sen bir yapay zeka asistanısın."
 
 okul_bilgisi = bilgi_bankasini_oku()
 
@@ -105,65 +98,40 @@ try:
     model = genai.GenerativeModel(model_name='gemini-2.0-flash', system_instruction=system_instruction)
     imagen_model = genai.GenerativeModel("imagen-3.0-generate-001")
 except Exception as e:
-    st.error(f"API Hatası: {e}")
+    st.error(f"API Hatası (Secrets kontrol et): {e}")
     st.stop()
 
 # --- 6. YARDIMCI FONKSİYONLAR ---
 def load_history():
-    if not os.path.exists(USER_HISTORY_FILE):
-        return []
+    if not os.path.exists(USER_HISTORY_FILE): return []
     try:
         with open(USER_HISTORY_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
-    except:
-        return []
+    except: return []
 
 def save_history(history):
     with open(USER_HISTORY_FILE, "w", encoding="utf-8") as f:
         json.dump(history, f, ensure_ascii=False, indent=4)
 
-def image_to_base64(image):
+def image_to_bytes(image):
+    # Görseli byte olarak sakla (Base64 yerine byte kullanıyoruz artık daha temiz)
     try:
-        buffered = io.BytesIO()
-        image.save(buffered, format="PNG")
-        return base64.b64encode(buffered.getvalue()).decode()
+        buf = io.BytesIO()
+        image.save(buf, format="PNG")
+        return buf.getvalue()
     except: return None
 
-def base64_to_image(base64_str):
+# --- YENİ: SADECE SES VERİSİ ÜRETEN FONKSİYON ---
+def metni_sese_cevir_bytes(text):
+    """Sesi RAM üzerinde oluşturur ve bytes olarak döner. Disk kullanmaz."""
     try:
-        if base64_str: return Image.open(io.BytesIO(base64.b64decode(base64_str)))
-    except: return None
-
-# --- YENİ SES OYNATMA FONKSİYONU (BASE64 İLE - EN SAĞLAM YÖNTEM) ---
-def metni_sese_cevir_ve_oynat(text, autoplay=True):
-    """
-    Metni sese çevirir ve HTML5 player olarak sayfaya gömer.
-    Dosya kaydetmez, hafızadan okur. iPhone dostudur.
-    """
-    try:
-        # Hafızada ses oluştur
         tts = gTTS(text=text, lang='tr', slow=False)
         fp = io.BytesIO()
         tts.write_to_fp(fp)
         fp.seek(0)
-        
-        # Base64'e çevir
-        b64 = base64.b64encode(fp.read()).decode()
-        
-        # HTML Player oluştur
-        # iPhone autoplay'i bazen engeller, controls ekledik ki elle de basılabilsin.
-        autoplay_attr = "autoplay" if autoplay else ""
-        md = f"""
-            <audio controls {autoplay_attr} style="width: 100%;">
-            <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
-            </audio>
-            """
-        st.markdown(md, unsafe_allow_html=True)
-        
-        # Geçmişe kaydetmek için base64 string'i dönüyoruz
-        return b64
+        return fp
     except Exception as e:
-        print(f"Ses hatası: {e}")
+        print(f"TTS Hatası: {e}")
         return None
 
 # --- SES İŞLEME (INPUT) ---
@@ -176,7 +144,6 @@ def sesten_yaziya(audio_bytes):
         ])
         return response.text.strip()
     except Exception as e:
-        print(f"Ses hatası: {e}") 
         return None
 
 def gorsel_olustur(prompt_text):
@@ -201,7 +168,6 @@ def gorsel_olustur(prompt_text):
 with st.sidebar:
     st.title("BAUN MYO")
     st.markdown("---")
-    st.subheader("İşlemler")
     
     uploaded_file = st.file_uploader("Görsel Yükle", type=["jpg", "png", "jpeg"])
     current_image = None
@@ -210,8 +176,7 @@ with st.sidebar:
             current_image = Image.open(uploaded_file)
             st.success("✅ Görsel yüklendi.")
             st.image(current_image, use_container_width=True)
-        except: 
-            st.error("❌ Görsel yüklenemedi")
+        except: pass
             
     st.markdown("---")
     ses_aktif = st.toggle("🎤 Sesli Yanıt", value=False)
@@ -225,173 +190,170 @@ with st.sidebar:
         
     st.markdown("### Geçmiş")
     for chat in reversed(load_history()):
-        raw_title = chat.get("title", "Sohbet")
-        display_title = (raw_title[:20] + '..') if len(raw_title) > 20 else raw_title
-        if st.button(f"💬 {display_title}", key=chat["id"], use_container_width=True):
+        title = chat.get("title", "Sohbet")
+        if st.button(f"💬 {title[:15]}..", key=chat["id"], use_container_width=True):
             st.session_state.messages = chat["messages"]
             st.session_state.current_chat_id = chat["id"]
             st.session_state.voice_text = None
-            st.session_state.process_audio = False
             st.rerun()
             
     st.markdown("---")
     if st.button("Temizle", type="primary", use_container_width=True):
         if os.path.exists(USER_HISTORY_FILE): os.remove(USER_HISTORY_FILE)
         st.session_state.messages = []
-        st.session_state.voice_text = None
-        st.session_state.process_audio = False
         st.rerun()
 
 # --- 8. ANA EKRAN ---
 st.markdown("<h1 style='text-align: center; color: white;'>BAUN-MYO AI Asistan</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: gray;'>Balıkesir Meslek Yüksekokulu AI Asistan.</p>", unsafe_allow_html=True)
 
 # Mesajları Göster
 for i, message in enumerate(st.session_state.messages):
-    avatar_icon = "👤" if message["role"] == "user" else "🤖"
-    with st.chat_message(message["role"], avatar=avatar_icon):
-        if message.get("image"):
+    avatar = "👤" if message["role"] == "user" else "🤖"
+    with st.chat_message(message["role"], avatar=avatar):
+        # Görsel varsa göster (Bytes'tan oku)
+        if message.get("image_bytes"):
             try:
-                img = base64_to_image(message["image"])
-                if img: st.image(img, width=400, caption="Görsel")
+                st.image(message["image_bytes"], width=300)
             except: pass
         
-        if message.get("content"):
-             st.markdown(message["content"])
+        st.markdown(message["content"])
 
-        # --- ESKİ SESLERİ DE BASE64 İLE OYNAT (GEÇMİŞ) ---
-        if message.get("audio_base64"):
-            b64_data = message["audio_base64"]
-            # Geçmişteki mesajlar otomatik çalmasın, kafa ütülemesin (autoplay=False)
-            md = f"""
-                <audio controls style="width: 100%;">
-                <source src="data:audio/mp3;base64,{b64_data}" type="audio/mp3">
-                </audio>
-                """
-            st.markdown(md, unsafe_allow_html=True)
+        # --- EN TEMİZ SES OYNATMA YÖNTEMİ ---
+        # Sadece son mesajsa veya kullanıcı isterse çalsın diye karmaşık HTML yapmadık.
+        # Direkt Streamlit'in kendi player'ını kullanıyoruz.
+        if message.get("audio_bytes"):
+            # iPhone için MIME type: audio/mpeg çok önemlidir.
+            st.audio(message["audio_bytes"], format="audio/mpeg")
 
 # --- 9. SES GİRİŞİ ---
 prompt = None
 
 if ses_aktif:
     st.markdown("---")
-    # NOT: iPhone'da mikrofonun çalışması için sitenin HTTPS olması gerekir!
-    audio_value = st.audio_input("🎙️ Ses Kaydet")
+    # iPhone HTTPS zorunluluğu vardır. Localhost'ta mikrofon çalışmayabilir.
+    audio_val = st.audio_input("🎙️ Ses Kaydet")
     
-    if audio_value:
-         if "last_audio_id" not in st.session_state or st.session_state.last_audio_id != audio_value.name:
+    if audio_val:
+         if "last_audio_id" not in st.session_state or st.session_state.last_audio_id != audio_val.name:
              st.session_state.process_audio = True
-             st.session_state.last_audio_id = audio_value.name
+             st.session_state.last_audio_id = audio_val.name
 
-    if st.session_state.process_audio and audio_value:
-        with st.spinner("🔄 Ses işleniyor..."):
-            audio_bytes = audio_value.read()
-            if audio_bytes:
-                result = sesten_yaziya(audio_bytes)
-                if result:
-                    st.session_state.voice_text = result
-                    prompt = result
-                else:
-                    st.error("⚠️ Ses anlaşılamadı. Lütfen tekrar deneyin.")
-        
+    if st.session_state.process_audio and audio_val:
+        with st.spinner("Ses işleniyor..."):
+            audio_bytes = audio_val.read()
+            res = sesten_yaziya(audio_bytes)
+            if res:
+                st.session_state.voice_text = res
+                prompt = res
+            else:
+                st.error("Ses anlaşılamadı.")
         st.session_state.process_audio = False
 
-# Metin girişi
-text_input = st.chat_input("Mesajınızı buraya yazın...")
+text_input = st.chat_input("Mesaj...")
 if text_input:
     prompt = text_input
     st.session_state.voice_text = None
 
 # --- 10. CEVAP ÜRETME ---
 if prompt:
-    saved_image_base64 = None
-    saved_image_for_api = None
+    # Kullanıcı mesajını kaydet
+    user_img_bytes = None
     if current_image:
-        saved_image_base64 = image_to_base64(current_image)
-        saved_image_for_api = current_image.copy()
-    
-    with st.chat_message("user", avatar="👤"):
-        st.markdown(prompt)
-        if saved_image_for_api: st.image(saved_image_for_api, width=300)
+        user_img_bytes = image_to_bytes(current_image)
     
     st.session_state.messages.append({
-        "role": "user", "content": prompt, "image": saved_image_base64
+        "role": "user", 
+        "content": prompt, 
+        "image_bytes": user_img_bytes
     })
+    
+    # Ekrana bas
+    with st.chat_message("user", avatar="👤"):
+        st.markdown(prompt)
+        if user_img_bytes: st.image(user_img_bytes, width=300)
 
+    # Modelden cevap al
     try:
-        with st.spinner('🤔 Asistan düşünüyor...'):
-            chat_history_text = []
+        with st.spinner('Yazıyor...'):
+            history_formatted = []
             for m in st.session_state.messages[:-1]:
-                msg_content = m.get("content", "")
-                if msg_content is None: msg_content = "..."
-                chat_history_text.append({
+                history_formatted.append({
                     "role": "user" if m["role"] == "user" else "model",
-                    "parts": [msg_content]
+                    "parts": [m["content"] if m["content"] else "..."]
                 })
             
-            chat_session = model.start_chat(history=chat_history_text)
+            chat = model.start_chat(history=history_formatted)
             
-            if saved_image_for_api:
-                response = chat_session.send_message([prompt, saved_image_for_api])
+            if current_image:
+                response = chat.send_message([prompt, current_image])
             else:
-                response = chat_session.send_message(prompt)
+                response = chat.send_message(prompt)
             
-            bot_reply_text = response.text
+            bot_text = response.text
 
-        generated_image_base64 = None
-        audio_b64_data = None
-        final_content_text = bot_reply_text
+        # Görsel mi Metin mi?
+        final_text = bot_text
+        gen_img_bytes = None
+        voice_data = None
 
-        if bot_reply_text.strip().startswith("[GORSEL_OLUSTUR]"):
-            imagen_prompt = bot_reply_text.replace("[GORSEL_OLUSTUR]", "").strip()
-            
-            with st.spinner('🎨 Görsel oluşturuluyor...'):
-                generated_img, hata_mesaji = gorsel_olustur(imagen_prompt)
-                
-                if generated_img:
-                    generated_image_base64 = image_to_base64(generated_img)
-                    final_content_text = ""
+        if bot_text.strip().startswith("[GORSEL_OLUSTUR]"):
+            img_prompt = bot_text.replace("[GORSEL_OLUSTUR]", "").strip()
+            with st.spinner('Görsel çiziliyor...'):
+                img_obj, err = gorsel_olustur(img_prompt)
+                if img_obj:
+                    gen_img_bytes = image_to_bytes(img_obj)
+                    final_text = "" # Görsel varsa metni boşalt
                     with st.chat_message("assistant", avatar="🤖"):
-                        st.image(generated_img, width=400, caption="Oluşturulan Görsel")
+                        st.image(img_obj, caption="AI Görseli")
                 else:
-                    final_content_text = f"⚠️ Görsel oluşturulamadı: {hata_mesaji}"
+                    final_text = f"Hata: {err}"
                     with st.chat_message("assistant", avatar="🤖"):
-                        st.error(final_content_text)
+                        st.error(final_text)
         else:
             with st.chat_message("assistant", avatar="🤖"):
-                st.markdown(final_content_text)
+                st.markdown(final_text)
                 
-                # --- YENİ SES OYNATMA (FIXED) ---
-                if ses_aktif and final_content_text:
-                    # Bu fonksiyon hem oynatır hem base64 datasını döner
-                    audio_b64_data = metni_sese_cevir_ve_oynat(final_content_text, autoplay=True)
+                # SES OLUŞTURMA (RAM ÜZERİNDE)
+                if ses_aktif and final_text:
+                    try:
+                        # BytesIO nesnesi döner
+                        audio_bio = metni_sese_cevir_bytes(final_text)
+                        if audio_bio:
+                            # Streamlit Player'a BytesIO veriyoruz
+                            st.audio(audio_bio, format="audio/mpeg")
+                            # Kayıt için bytes'a çeviriyoruz
+                            voice_data = audio_bio.getvalue() 
+                    except Exception as e:
+                        st.warning(f"Ses hatası: {e}")
 
+        # Asistan mesajını kaydet
         st.session_state.messages.append({
             "role": "assistant", 
-            "content": final_content_text, 
-            "image": generated_image_base64,
-            "audio_base64": audio_b64_data # Dosya yolu değil, direkt veriyi kaydediyoruz
+            "content": final_text, 
+            "image_bytes": gen_img_bytes,
+            "audio_bytes": voice_data
         })
         
-        current_history = load_history()
-        chat_exists = False
-        if "current_chat_id" not in st.session_state:
-            st.session_state.current_chat_id = str(uuid.uuid4())
+        # Geçmişe Yaz (JSON serializable olması için bytes'ı yoksayıyoruz şimdilik, history dosyası şişmesin)
+        # Basit history kaydı
+        hist = load_history()
+        chat_id = st.session_state.current_chat_id
         
-        cid = st.session_state.current_chat_id
-        for chat in current_history:
-            if chat["id"] == cid:
-                chat["messages"] = st.session_state.messages
-                chat_exists = True
+        # History'de bytes saklamak zor olduğu için sadece metinleri saklayalım
+        # Karmaşık JSON encode hatası almamak için simple_msgs oluşturuyoruz
+        simple_msgs = []
+        for m in st.session_state.messages:
+            simple_msgs.append({"role": m["role"], "content": m["content"]})
+            
+        found = False
+        for c in hist:
+            if c["id"] == chat_id:
+                c["messages"] = simple_msgs
+                found = True
                 break
-        
-        if not chat_exists:
-            title = prompt[:30] + "..." if len(prompt) > 30 else prompt
-            current_history.append({
-                "id": cid, "title": title, "timestamp": str(datetime.now()), "messages": st.session_state.messages
-            })
-        
-        save_history(current_history)
+        if not found:
+            hist.append({"id": chat_id, "title": prompt[:20], "messages": simple_msgs})
+        save_history(hist)
 
     except Exception as e:
-        st.error(f"❌ Bir hata oluştu: {e}")
+        st.error(f"Bir hata oluştu: {e}")
