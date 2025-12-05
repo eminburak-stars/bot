@@ -39,19 +39,16 @@ section[data-testid="stSidebar"] {background-color: #161b22 !important; border-r
 st.markdown(custom_style, unsafe_allow_html=True)
 
 # --- 3. KLASÖR VE TEMİZLİK ---
-# Ana oturum klasörü
 SESSION_FOLDER = "sessions"
 if not os.path.exists(SESSION_FOLDER):
     os.makedirs(SESSION_FOLDER)
 
-# --- YENİ: SES DOSYALARI İÇİN KLASÖR ---
 AUDIO_FOLDER = "sesler"
 if not os.path.exists(AUDIO_FOLDER):
     os.makedirs(AUDIO_FOLDER)
 
 def temizlik_yap(dakika=60):
     su_an = time.time()
-    # Jsonları temizle
     try:
         for dosya in os.listdir(SESSION_FOLDER):
             if dosya.endswith(".json"):
@@ -61,11 +58,10 @@ def temizlik_yap(dakika=60):
                     except: pass
     except: pass
     
-    # Eski sesleri temizle (disk dolmasın diye)
     try:
         for dosya in os.listdir(AUDIO_FOLDER):
             dosya_yolu = os.path.join(AUDIO_FOLDER, dosya)
-            if (su_an - os.path.getmtime(dosya_yolu)) > (dakika * 60): # 1 saatten eski sesleri sil
+            if (su_an - os.path.getmtime(dosya_yolu)) > (dakika * 60):
                 try: os.remove(dosya_yolu)
                 except: pass
     except: pass
@@ -145,21 +141,32 @@ def base64_to_image(base64_str):
         if base64_str: return Image.open(io.BytesIO(base64.b64decode(base64_str)))
     except: return None
 
-# --- YENİ SES KAYDETME YÖNTEMİ (DOSYA TABANLI) ---
 def metni_sese_cevir_ve_kaydet(text):
-    """Metni mp3 dosyası olarak 'sesler' klasörüne kaydeder ve dosya yolunu döner."""
     try:
-        # Rastgele benzersiz isim oluştur
         dosya_adi = f"ses_{uuid.uuid4()}.mp3"
         dosya_yolu = os.path.join(AUDIO_FOLDER, dosya_adi)
         
         tts = gTTS(text=text, lang='tr', slow=False)
         tts.save(dosya_yolu)
         
-        return dosya_yolu # Örn: sesler/ses_1234.mp3
+        return dosya_yolu 
     except Exception as e: 
         print(f"Ses kaydetme hatası: {e}")
         return None
+
+# --- YENİ SES OYNATMA FONKSİYONU (IPHONE FIX) ---
+def sesi_oynat(dosya_yolu, unique_key):
+    """Dosyayı byte olarak okur ve st.audio'ya verir. iPhone dostudur."""
+    if os.path.exists(dosya_yolu):
+        try:
+            with open(dosya_yolu, "rb") as f:
+                audio_bytes = f.read()
+            # Formatı 'audio/mpeg' yaptık, iPhone bunu sever.
+            st.audio(audio_bytes, format='audio/mpeg', key=unique_key)
+        except Exception as e:
+            st.warning(f"Ses oynatılamadı: {e}")
+    else:
+        st.warning("⚠️ Ses dosyası bulunamadı.")
 
 # --- SES İŞLEME (INPUT) ---
 def sesten_yaziya(audio_bytes):
@@ -237,11 +244,11 @@ with st.sidebar:
         st.session_state.process_audio = False
         st.rerun()
 
-# --- 8. ANA EKRAN (GÜNCELLENDİ) ---
+# --- 8. ANA EKRAN ---
 st.markdown("<h1 style='text-align: center; color: white;'>BAUN-MYO AI Asistan</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; color: gray;'>Balıkesir Meslek Yüksekokulu AI Asistan.</p>", unsafe_allow_html=True)
 
-# Mesajları Göster - ARTIK DOSYA OKUYORUZ
+# Mesajları Göster
 for i, message in enumerate(st.session_state.messages):
     avatar_icon = "👤" if message["role"] == "user" else "🤖"
     with st.chat_message(message["role"], avatar=avatar_icon):
@@ -254,22 +261,17 @@ for i, message in enumerate(st.session_state.messages):
         if message.get("content"):
              st.markdown(message["content"])
 
-        # --- BURASI DEĞİŞTİ: DOSYA YOLUNDAN SES ÇAL ---
-        # 'audio_path' anahtarını kontrol ediyoruz
+        # --- IPHONE FIX: DOSYAYI OKUYUP OYNAT ---
         if message.get("audio_path"):
-            dosya_yolu = message["audio_path"]
-            # Dosya gerçekten var mı diye bakıyoruz
-            if os.path.exists(dosya_yolu):
-                # Unique key şart!
-                st.audio(dosya_yolu, format='audio/mp3', key=f"audio_player_{i}_{uuid.uuid4()}")
-            else:
-                st.warning("⚠️ Ses dosyası süresi dolduğu için silinmiş.")
+            unique_key = f"audio_player_{i}_{uuid.uuid4()}"
+            sesi_oynat(message["audio_path"], unique_key)
 
 # --- 9. SES GİRİŞİ ---
 prompt = None
 
 if ses_aktif:
     st.markdown("---")
+    # NOT: iPhone'da mikrofonun çalışması için sitenin HTTPS olması gerekir!
     audio_value = st.audio_input("🎙️ Ses Kaydet")
     
     if audio_value:
@@ -333,7 +335,7 @@ if prompt:
             bot_reply_text = response.text
 
         generated_image_base64 = None
-        audio_file_path = None # Dosya yolu
+        audio_file_path = None
         final_content_text = bot_reply_text
 
         if bot_reply_text.strip().startswith("[GORSEL_OLUSTUR]"):
@@ -355,24 +357,20 @@ if prompt:
             with st.chat_message("assistant", avatar="🤖"):
                 st.markdown(final_content_text)
                 
-                # --- SES OLUŞTURMA VE DOSYAYA KAYDETME ---
+                # --- SES OLUŞTURMA VE OYNATMA ---
                 if ses_aktif and final_content_text:
-                    # Yeni fonksiyonu kullanıyoruz: Dosyaya yazıyor
                     audio_file_path = metni_sese_cevir_ve_kaydet(final_content_text)
-                    
                     if audio_file_path:
-                        # O anlık oynat
-                        st.audio(audio_file_path, format='audio/mp3')
+                        # iPhone için yeni oynatma fonksiyonunu kullanıyoruz
+                        sesi_oynat(audio_file_path, f"audio_new_{uuid.uuid4()}")
 
-        # Mesajı kaydederken 'audio_path' alanını ekliyoruz
         st.session_state.messages.append({
             "role": "assistant", 
             "content": final_content_text, 
             "image": generated_image_base64,
-            "audio_path": audio_file_path # <--- DOSYA YOLUNU KAYDETTİK
+            "audio_path": audio_file_path 
         })
         
-        # Geçmişe kaydetme
         current_history = load_history()
         chat_exists = False
         if "current_chat_id" not in st.session_state:
