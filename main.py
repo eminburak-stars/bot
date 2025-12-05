@@ -8,7 +8,7 @@ from datetime import datetime
 from PIL import Image
 import io
 import base64
-from gtts import gTTS # Sadece okuma için kalsın, dönüştürme için değil.
+from gtts import gTTS 
 
 # --- 1. SAYFA AYARLARI ---
 st.set_page_config(
@@ -129,19 +129,25 @@ def base64_to_image(base64_str):
         if base64_str: return Image.open(io.BytesIO(base64.b64decode(base64_str)))
     except: return None
 
-# --- SES İŞLEME (GEMINI İLE - İŞTE ÇÖZÜM BURADA KRAL) ---
+# --- YENİ EKLENEN FONKSİYONLAR (SES İÇİN) ---
+def bytes_to_base64_str(data_bytes):
+    """Ses verisini string olarak kaydetmek için"""
+    return base64.b64encode(data_bytes).decode('utf-8')
+
+def base64_str_to_bytes(data_str):
+    """String veriyi sese çevirmek için"""
+    return base64.b64decode(data_str.encode('utf-8'))
+
+# --- SES İŞLEME ---
 def sesten_yaziya(audio_bytes):
     try:
-        # Sesi direkt Gemini'ye atıyoruz. Format derdi yok.
         transcription_model = genai.GenerativeModel("gemini-2.0-flash")
-        
         response = transcription_model.generate_content([
             "Bu ses kaydını dinle ve Türkçe olarak yazıya dök. Sadece söylenen metni ver.",
             {"mime_type": "audio/webm", "data": audio_bytes} 
         ])
         return response.text.strip()
     except Exception as e:
-        # Hata olursa logla ama kullanıcıya yansıtma
         print(f"Ses hatası: {e}") 
         return None
 
@@ -234,17 +240,21 @@ for message in st.session_state.messages:
         if message.get("content"):
              st.markdown(message["content"])
 
-# --- 9. SES GİRİŞİ (YENİ YÖNTEM - BUTON BAZLI) ---
+        # --- BURASI DÜZELTİLDİ: KAYITLI SES VARSA OYNAT ---
+        if message.get("audio"):
+            try:
+                audio_bytes = base64_str_to_bytes(message["audio"])
+                st.audio(audio_bytes, format='audio/mpeg')
+            except: pass
+
+# --- 9. SES GİRİŞİ ---
 prompt = None
 
 if ses_aktif:
     st.markdown("---")
-    # st.audio_input zaten sesi wav olarak verebilir, biz gemini'ye raw gönderiyoruz
     audio_value = st.audio_input("🎙️ Ses Kaydet")
     
-    # Audio input değiştiğinde veya dolduğunda
     if audio_value:
-         # Session state'e kaydet ki rerun olunca kaybolmasın
          if "last_audio_id" not in st.session_state or st.session_state.last_audio_id != audio_value.name:
              st.session_state.process_audio = True
              st.session_state.last_audio_id = audio_value.name
@@ -253,7 +263,6 @@ if ses_aktif:
         with st.spinner("🔄 Ses işleniyor..."):
             audio_bytes = audio_value.read()
             if audio_bytes:
-                # Burada direkt fonksiyonu çağırıyoruz
                 result = sesten_yaziya(audio_bytes)
                 if result:
                     st.session_state.voice_text = result
@@ -306,6 +315,7 @@ if prompt:
             bot_reply_text = response.text
 
         generated_image_base64 = None
+        audio_base64 = None # Ses verisi için değişken
         final_content_text = bot_reply_text
 
         if bot_reply_text.strip().startswith("[GORSEL_OLUSTUR]"):
@@ -327,11 +337,16 @@ if prompt:
             with st.chat_message("assistant", avatar="🤖"):
                 st.markdown(final_content_text)
                 
+                # --- SES OLUŞTURMA VE KAYDETME ---
                 if ses_aktif and final_content_text:
                     sound_fp = metni_sese_cevir_bytes(final_content_text)
                     if sound_fp:
                         audio_bytes = sound_fp.read()
                         
+                        # Sesi base64'e çevirip değişkene atıyoruz
+                        audio_base64 = bytes_to_base64_str(audio_bytes) 
+                        
+                        # İndirme butonu ve oynatıcı (O anlık gösterim)
                         st.download_button(
                             label="🔊 Yanıtı Sesli Dinle",
                             data=audio_bytes,
@@ -342,8 +357,12 @@ if prompt:
                         
                         st.audio(audio_bytes, format='audio/mpeg')
 
+        # Mesajı kaydederken 'audio' alanını da ekliyoruz
         st.session_state.messages.append({
-            "role": "assistant", "content": final_content_text, "image": generated_image_base64
+            "role": "assistant", 
+            "content": final_content_text, 
+            "image": generated_image_base64,
+            "audio": audio_base64 # <--- KRAL HAMLE BURASI
         })
         
         current_history = load_history()
