@@ -8,10 +8,7 @@ from datetime import datetime
 from PIL import Image
 import io
 import base64
-import speech_recognition as sr
-from gtts import gTTS
-import tempfile
-from pydub import AudioSegment 
+from gtts import gTTS # Sadece okuma için kalsın, dönüştürme için değil.
 
 # --- 1. SAYFA AYARLARI ---
 st.set_page_config(
@@ -59,22 +56,22 @@ def temizlik_yap(dakika=30):
 
 temizlik_yap(dakika=30)
 
-# --- 4. SESSION STATE BAŞLATMA ---
+# --- 4. SESSION STATE ---
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-if "audio_processed" not in st.session_state:
-    st.session_state.audio_processed = False
+if "voice_text" not in st.session_state:
+    st.session_state.voice_text = None
 
-if "last_audio_hash" not in st.session_state:
-    st.session_state.last_audio_hash = None
+if "process_audio" not in st.session_state:
+    st.session_state.process_audio = False
 
 USER_HISTORY_FILE = os.path.join(SESSION_FOLDER, f"history_{st.session_state.session_id}.json")
 
-# --- 5. API VE BİLGİ BANKASI ---
+# --- 5. API ---
 def bilgi_bankasini_oku():
     dosya_yolu = "bilgi.txt"
     varsayilan = "Sen bir yapay zeka asistanısın."
@@ -132,53 +129,22 @@ def base64_to_image(base64_str):
         if base64_str: return Image.open(io.BytesIO(base64.b64decode(base64_str)))
     except: return None
 
-def get_audio_hash(audio_bytes):
-    """Ses dosyasının hash'ini oluştur (tekrar işlemeyi önlemek için)"""
-    import hashlib
-    return hashlib.md5(audio_bytes).hexdigest()
-
-# --- SES GİRİŞİ (LOOP SORUNU DÜZELTİLDİ) ---
+# --- SES İŞLEME (GEMINI İLE - İŞTE ÇÖZÜM BURADA KRAL) ---
 def sesten_yaziya(audio_bytes):
-    """iPhone Safari'den gelen webm/opus formatını işler"""
-    r = sr.Recognizer()
-    
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp_input:
-        tmp_input.write(audio_bytes)
-        tmp_input_path = tmp_input.name
-    
-    tmp_wav_path = tmp_input_path.replace(".webm", ".wav")
-
     try:
-        audio = AudioSegment.from_file(tmp_input_path, format="webm")
-        audio = audio.set_channels(1)
-        audio = audio.set_frame_rate(16000)
-        audio.export(tmp_wav_path, format="wav")
+        # Sesi direkt Gemini'ye atıyoruz. Format derdi yok.
+        transcription_model = genai.GenerativeModel("gemini-2.0-flash")
         
-        with sr.AudioFile(tmp_wav_path) as source:
-            r.adjust_for_ambient_noise(source, duration=0.5)
-            audio_data = r.record(source)
-            text = r.recognize_google(audio_data, language="tr-TR")
-            return text
-            
-    except sr.UnknownValueError:
-        return None
-    except sr.RequestError as e:
-        st.error(f"❌ Google Speech API hatası: {e}")
-        return None
+        response = transcription_model.generate_content([
+            "Bu ses kaydını dinle ve Türkçe olarak yazıya dök. Sadece söylenen metni ver.",
+            {"mime_type": "audio/webm", "data": audio_bytes} 
+        ])
+        return response.text.strip()
     except Exception as e:
-        st.error(f"❌ Ses işleme hatası: {e}")
+        # Hata olursa logla ama kullanıcıya yansıtma
+        print(f"Ses hatası: {e}") 
         return None
-        
-    finally:
-        try:
-            if os.path.exists(tmp_input_path): 
-                os.unlink(tmp_input_path)
-            if os.path.exists(tmp_wav_path): 
-                os.unlink(tmp_wav_path)
-        except:
-            pass
 
-# --- SES OLUŞTURMA ---
 def metni_sese_cevir_bytes(text):
     try:
         tts = gTTS(text=text, lang='tr', slow=False)
@@ -186,11 +152,8 @@ def metni_sese_cevir_bytes(text):
         tts.write_to_fp(fp)
         fp.seek(0)
         return fp
-    except Exception as e:
-        st.error(f"Ses oluşturma hatası: {e}")
-        return None
+    except: return None
 
-# --- GÖRSEL OLUŞTURMA ---
 def gorsel_olustur(prompt_text):
     try:
         result = imagen_model.generate_images(
@@ -231,8 +194,8 @@ with st.sidebar:
     if st.button("Yeni Sohbet", use_container_width=True):
         st.session_state.messages = []
         st.session_state.current_chat_id = str(uuid.uuid4())
-        st.session_state.audio_processed = False
-        st.session_state.last_audio_hash = None
+        st.session_state.voice_text = None
+        st.session_state.process_audio = False
         st.rerun()
         
     st.markdown("### Geçmiş")
@@ -242,23 +205,23 @@ with st.sidebar:
         if st.button(f"💬 {display_title}", key=chat["id"], use_container_width=True):
             st.session_state.messages = chat["messages"]
             st.session_state.current_chat_id = chat["id"]
-            st.session_state.audio_processed = False
-            st.session_state.last_audio_hash = None
+            st.session_state.voice_text = None
+            st.session_state.process_audio = False
             st.rerun()
             
     st.markdown("---")
     if st.button("Temizle", type="primary", use_container_width=True):
         if os.path.exists(USER_HISTORY_FILE): os.remove(USER_HISTORY_FILE)
         st.session_state.messages = []
-        st.session_state.audio_processed = False
-        st.session_state.last_audio_hash = None
+        st.session_state.voice_text = None
+        st.session_state.process_audio = False
         st.rerun()
 
 # --- 8. ANA EKRAN ---
 st.markdown("<h1 style='text-align: center; color: white;'>BAUN-MYO AI Asistan</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; color: gray;'>Balıkesir Meslek Yüksekokulu AI Asistan.</p>", unsafe_allow_html=True)
 
-# Mesajları Ekrana Bas
+# Mesajları Göster
 for message in st.session_state.messages:
     avatar_icon = "👤" if message["role"] == "user" else "🤖"
     with st.chat_message(message["role"], avatar=avatar_icon):
@@ -271,45 +234,43 @@ for message in st.session_state.messages:
         if message.get("content"):
              st.markdown(message["content"])
 
-# --- 9. GİRİŞ ALANI (LOOP SORUNU DÜZELTİLDİ) ---
+# --- 9. SES GİRİŞİ (YENİ YÖNTEM - BUTON BAZLI) ---
 prompt = None
-audio_value = None
 
 if ses_aktif:
-    st.write("🎙️ **Ses Kaydı:**")
-    audio_value = st.audio_input("Konuş")
+    st.markdown("---")
+    # st.audio_input zaten sesi wav olarak verebilir, biz gemini'ye raw gönderiyoruz
+    audio_value = st.audio_input("🎙️ Ses Kaydet")
+    
+    # Audio input değiştiğinde veya dolduğunda
+    if audio_value:
+         # Session state'e kaydet ki rerun olunca kaybolmasın
+         if "last_audio_id" not in st.session_state or st.session_state.last_audio_id != audio_value.name:
+             st.session_state.process_audio = True
+             st.session_state.last_audio_id = audio_value.name
 
-text_input = st.chat_input("Mesajınızı buraya yazın...")
-
-# SES İŞLEME (TEKRAR ÖNLEME MEKANİZMASI)
-if ses_aktif and audio_value and not st.session_state.audio_processed:
-    audio_bytes = audio_value.read()
-    if audio_bytes:
-        current_hash = get_audio_hash(audio_bytes)
+    if st.session_state.process_audio and audio_value:
+        with st.spinner("🔄 Ses işleniyor..."):
+            audio_bytes = audio_value.read()
+            if audio_bytes:
+                # Burada direkt fonksiyonu çağırıyoruz
+                result = sesten_yaziya(audio_bytes)
+                if result:
+                    st.session_state.voice_text = result
+                    prompt = result
+                else:
+                    st.error("⚠️ Ses anlaşılamadı. Lütfen tekrar deneyin.")
         
-        # Aynı ses dosyası daha önce işlendiyse işleme
-        if current_hash != st.session_state.last_audio_hash:
-            with st.spinner("🔄 Sesiniz işleniyor..."):
-                prompt = sesten_yaziya(audio_bytes)
-                st.session_state.last_audio_hash = current_hash
-                st.session_state.audio_processed = True
-                
-                if not prompt:
-                    st.warning("⚠️ Ses anlaşılamadı. Lütfen tekrar deneyin.")
-                    st.session_state.audio_processed = False
-                    st.session_state.last_audio_hash = None
-elif text_input:
+        st.session_state.process_audio = False
+
+# Metin girişi
+text_input = st.chat_input("Mesajınızı buraya yazın...")
+if text_input:
     prompt = text_input
-    # Metin girişinde ses flag'ini sıfırla
-    st.session_state.audio_processed = False
-    st.session_state.last_audio_hash = None
+    st.session_state.voice_text = None
 
 # --- 10. CEVAP ÜRETME ---
 if prompt:
-    # Ses işleme flag'ini sıfırla (yeni kayıt için hazır)
-    if ses_aktif:
-        st.session_state.audio_processed = False
-    
     saved_image_base64 = None
     saved_image_for_api = None
     if current_image:
@@ -367,20 +328,19 @@ if prompt:
                 st.markdown(final_content_text)
                 
                 if ses_aktif and final_content_text:
-                    with st.spinner("🔊 Ses oluşturuluyor..."):
-                        sound_fp = metni_sese_cevir_bytes(final_content_text)
-                        if sound_fp:
-                            audio_bytes = sound_fp.read()
-                            
-                            st.download_button(
-                                label="🔊 Yanıtı Sesli Dinle",
-                                data=audio_bytes,
-                                file_name=f"yanit.mp3",
-                                mime="audio/mpeg",
-                                use_container_width=True
-                            )
-                            
-                            st.audio(audio_bytes, format='audio/mpeg')
+                    sound_fp = metni_sese_cevir_bytes(final_content_text)
+                    if sound_fp:
+                        audio_bytes = sound_fp.read()
+                        
+                        st.download_button(
+                            label="🔊 Yanıtı Sesli Dinle",
+                            data=audio_bytes,
+                            file_name="yanit.mp3",
+                            mime="audio/mpeg",
+                            use_container_width=True
+                        )
+                        
+                        st.audio(audio_bytes, format='audio/mpeg')
 
         st.session_state.messages.append({
             "role": "assistant", "content": final_content_text, "image": generated_image_base64
