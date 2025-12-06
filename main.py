@@ -8,7 +8,7 @@ from datetime import datetime
 from PIL import Image
 import io
 import asyncio
-import edge_tts # YENİ KRAL KÜTÜPHANE BU
+import edge_tts
 
 # --- 1. SAYFA AYARLARI ---
 st.set_page_config(
