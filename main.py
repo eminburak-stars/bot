@@ -141,14 +141,23 @@ def base64_str_to_bytes(data_str):
 # --- SES İŞLEME ---
 def sesten_yaziya(audio_bytes):
     try:
+        # Model tanımlama
         transcription_model = genai.GenerativeModel("gemini-2.0-flash")
+        
+        # Mime type'ı 'audio/wav' olarak değiştirdik, daha garanti olur.
         response = transcription_model.generate_content([
-            "Bu ses kaydını dinle ve Türkçe olarak yazıya dök. Sadece söylenen metni ver.",
-            {"mime_type": "audio/webm", "data": audio_bytes} 
+            "Bu ses kaydını dinle ve Türkçe olarak yazıya dök. Sadece söylenen metni ver, yorum yapma.",
+            {"mime_type": "audio/wav", "data": audio_bytes} 
         ])
-        return response.text.strip()
+        
+        # Eğer model boş dönerse veya metin yoksa kontrol et
+        if response and response.text:
+            return response.text.strip()
+        else:
+            return None
     except Exception as e:
-        print(f"Ses hatası: {e}") 
+        # Hata detayını konsola yazdır (geliştirici için)
+        print(f"Ses transcribe hatası: {e}") 
         return None
 
 def metni_sese_cevir_bytes(text):
@@ -254,28 +263,45 @@ if ses_aktif:
     st.markdown("---")
     audio_value = st.audio_input("🎙️ Ses Kaydet")
     
+    # Yeni bir ses kaydı geldi mi kontrolü
     if audio_value:
-         if "last_audio_id" not in st.session_state or st.session_state.last_audio_id != audio_value.name:
-             st.session_state.process_audio = True
-             st.session_state.last_audio_id = audio_value.name
+        # Eğer yeni bir dosya ise veya daha önce işlenmemişse
+        if "last_audio_id" not in st.session_state or st.session_state.last_audio_id != audio_value.name:
+            st.session_state.process_audio = True
+            st.session_state.last_audio_id = audio_value.name
 
+    # Ses işleme tetiklendiyse
     if st.session_state.process_audio and audio_value:
         with st.spinner("🔄 Ses işleniyor..."):
-            audio_bytes = audio_value.read()
-            if audio_bytes:
-                result = sesten_yaziya(audio_bytes)
-                if result:
-                    st.session_state.voice_text = result
-                    prompt = result
-                else:
-                    st.error("⚠️ Ses anlaşılamadı. Lütfen tekrar deneyin.")
-        
-        st.session_state.process_audio = False
+            try:
+                # Dosyayı okumadan önce imleci başa alalım (Garanti olsun)
+                audio_value.seek(0)
+                audio_bytes = audio_value.read()
+                
+                if audio_bytes:
+                    result = sesten_yaziya(audio_bytes)
+                    if result:
+                        st.session_state.voice_text = result
+                        prompt = result
+                    else:
+                        st.error("⚠️ Ses anlaşılamadı veya API yanıt vermedi.")
+                        st.session_state.voice_text = None
+                
+            except Exception as e:
+                st.error(f"Ses okuma hatası: {e}")
+            
+            # İşlem bitti, bayrağı indir
+            st.session_state.process_audio = False
 
-# Metin girişi
+# Eğer ses zaten işlendiyse ve hafızada varsa onu prompt yap
+if not prompt and st.session_state.voice_text:
+    prompt = st.session_state.voice_text
+
+# Metin girişi (Ses varsa bile kullanıcı elle düzeltebilsin veya üstüne yazabilsin)
 text_input = st.chat_input("Mesajınızı buraya yazın...")
 if text_input:
     prompt = text_input
+    # Kullanıcı elle yazdıysa sesli metni sıfırla ki karışmasın
     st.session_state.voice_text = None
 
 # --- 10. CEVAP ÜRETME ---
