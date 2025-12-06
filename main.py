@@ -72,6 +72,7 @@ if "voice_text" not in st.session_state:
 if "process_audio" not in st.session_state:
     st.session_state.process_audio = False
 
+# İşte burası düzeldi, tek başına bir satır oldu:
 USER_HISTORY_FILE = os.path.join(SESSION_FOLDER, f"history_{st.session_state.session_id}.json")
 
 # --- 5. API ---
@@ -123,8 +124,7 @@ def image_to_bytes(image):
         return buf.getvalue()
     except: return None
 
-# --- YENİ VE GÜÇLÜ SES MOTORU (EDGE-TTS) ---
-# --- BURASI İLK ATTIĞIN ORİJİNAL HALİNE DÖNDÜ ---
+# --- SES MOTORU (ORİJİNAL HALİ) ---
 async def edge_tts_generate(text, voice):
     """Sesi asenkron olarak oluşturur (Microsoft Neural Voice)"""
     communicate = edge_tts.Communicate(text, voice)
@@ -141,7 +141,6 @@ def metni_sese_cevir_bytes(text, voice_id="tr-TR-AhmetNeural"):
     RAM üzerinde sesi oluşturur, diske yazmaz.
     """
     try:
-        # Yeni bir event loop oluşturup çalıştırıyoruz (ESKİ YÖNTEM)
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         audio_fp = loop.run_until_complete(edge_tts_generate(text, voice_id))
