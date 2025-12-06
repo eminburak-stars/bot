@@ -1,5 +1,6 @@
 streamlit
 google-generativeai
-Pillow
-gTTS
+python-dotenv
 edge-tts
+nest_asyncio
+Pillow
