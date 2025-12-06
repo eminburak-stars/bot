@@ -261,20 +261,31 @@ prompt = None
 
 if ses_aktif:
     st.markdown("---")
-    audio_value = st.audio_input("🎙️ Ses Kaydet")
+    # key="audio_recorder" ekledik ki Streamlit bunu sabit bir bileşen olarak görsün
+    audio_value = st.audio_input("🎙️ Ses Kaydet", key="audio_recorder")
     
-    # Yeni bir ses kaydı geldi mi kontrolü
-    if audio_value:
-        # Eğer yeni bir dosya ise veya daha önce işlenmemişse
-        if "last_audio_id" not in st.session_state or st.session_state.last_audio_id != audio_value.name:
+    # 1. Durum: Hiç ses yoksa veya ses silindiyse state'i temizle
+    if not audio_value:
+        st.session_state.last_audio_id = None
+        st.session_state.voice_text = None
+    
+    # 2. Durum: Ses var. Bakalım yeni mi?
+    else:
+        # Streamlit audio objesinin kendine has bir ID'si yoktur, o yüzden boyut ve isimden imza üretiyoruz
+        # audio_value.size ve audio_value.name kombinasyonu genelde benzersizdir.
+        current_audio_id = f"{audio_value.name}_{audio_value.size}"
+        
+        # Eğer bu ses daha önce işlenmemişse (ID'ler farklıysa)
+        if "last_audio_id" not in st.session_state or st.session_state.last_audio_id != current_audio_id:
             st.session_state.process_audio = True
-            st.session_state.last_audio_id = audio_value.name
+            st.session_state.last_audio_id = current_audio_id
+            # Yeni ses geldiği için eski metni temizle
+            st.session_state.voice_text = None 
 
-    # Ses işleme tetiklendiyse
-    if st.session_state.process_audio and audio_value:
+    # İşleme tetiklendiyse
+    if st.session_state.get("process_audio", False) and audio_value:
         with st.spinner("🔄 Ses işleniyor..."):
             try:
-                # Dosyayı okumadan önce imleci başa alalım (Garanti olsun)
                 audio_value.seek(0)
                 audio_bytes = audio_value.read()
                 
@@ -283,25 +294,25 @@ if ses_aktif:
                     if result:
                         st.session_state.voice_text = result
                         prompt = result
+                        # İşlem başarılı, rerun yapalım ki chat ekranına düşsün hemen
+                        st.session_state.process_audio = False
+                        st.rerun()
                     else:
-                        st.error("⚠️ Ses anlaşılamadı veya API yanıt vermedi.")
-                        st.session_state.voice_text = None
-                
+                        st.error("⚠️ Ses anlaşılamadı.")
+                        st.session_state.process_audio = False
             except Exception as e:
-                st.error(f"Ses okuma hatası: {e}")
-            
-            # İşlem bitti, bayrağı indir
-            st.session_state.process_audio = False
+                st.error(f"Hata: {e}")
+                st.session_state.process_audio = False
 
-# Eğer ses zaten işlendiyse ve hafızada varsa onu prompt yap
-if not prompt and st.session_state.voice_text:
+# Eğer işlem bitmiş ve metin hafızadaysa onu prompt'a eşitle
+if st.session_state.voice_text:
     prompt = st.session_state.voice_text
 
-# Metin girişi (Ses varsa bile kullanıcı elle düzeltebilsin veya üstüne yazabilsin)
+# Metin girişi
 text_input = st.chat_input("Mesajınızı buraya yazın...")
 if text_input:
     prompt = text_input
-    # Kullanıcı elle yazdıysa sesli metni sıfırla ki karışmasın
+    # Elle yazılınca sesi unut
     st.session_state.voice_text = None
 
 # --- 10. CEVAP ÜRETME ---
