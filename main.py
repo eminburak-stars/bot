@@ -60,6 +60,7 @@ temizlik_yap(dakika=60)
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
 
+# --- EKSİK OLAN KISIM BURASIYDI, EKLEDİM ---
 if "current_chat_id" not in st.session_state:
     st.session_state.current_chat_id = str(uuid.uuid4())
 
@@ -72,7 +73,6 @@ if "voice_text" not in st.session_state:
 if "process_audio" not in st.session_state:
     st.session_state.process_audio = False
 
-# İşte burası düzeldi, tek başına bir satır oldu:
 USER_HISTORY_FILE = os.path.join(SESSION_FOLDER, f"history_{st.session_state.session_id}.json")
 
 # --- 5. API ---
@@ -124,7 +124,7 @@ def image_to_bytes(image):
         return buf.getvalue()
     except: return None
 
-# --- SES MOTORU (ORİJİNAL HALİ) ---
+# --- YENİ VE GÜÇLÜ SES MOTORU (EDGE-TTS) ---
 async def edge_tts_generate(text, voice):
     """Sesi asenkron olarak oluşturur (Microsoft Neural Voice)"""
     communicate = edge_tts.Communicate(text, voice)
@@ -141,6 +141,7 @@ def metni_sese_cevir_bytes(text, voice_id="tr-TR-AhmetNeural"):
     RAM üzerinde sesi oluşturur, diske yazmaz.
     """
     try:
+        # Yeni bir event loop oluşturup çalıştırıyoruz
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         audio_fp = loop.run_until_complete(edge_tts_generate(text, voice_id))
@@ -197,7 +198,7 @@ with st.sidebar:
     st.markdown("---")
     ses_aktif = st.toggle("🎤 Sesli Yanıt", value=False)
 
-    # --- SES SEÇİMİ ---
+    # --- SES SEÇİMİ EKLEDİM KRAL ---
     if ses_aktif:
         voice_choice = st.radio("Ses Tonu", ["Erkek (Ahmet)", "Kadın (Emel)"], index=0)
         # Microsoft Edge Ses Kodları
