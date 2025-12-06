@@ -8,7 +8,7 @@ from datetime import datetime
 from PIL import Image
 import io
 import asyncio
-import edge_tts
+import edge_tts 
 
 # --- 1. SAYFA AYARLARI ---
 st.set_page_config(
@@ -60,14 +60,24 @@ temizlik_yap(dakika=60)
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
 
-# --- EKLEMEN GEREKEN KISIM BAŞLANGIÇ ---
+# --- Bunu yeni eklemiştik ---
 if "current_chat_id" not in st.session_state:
     st.session_state.current_chat_id = str(uuid.uuid4())
-# --- EKLEMEN GEREKEN KISIM BİTİŞ ---
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
-    
+
+if "voice_text" not in st.session_state:
+    st.session_state.voice_text = None
+
+if "process_audio" not in st.session_state:
+    st.session_state.process_audio = False
+
+# --- İŞTE EKSİK OLAN VE HATAYA SEBEP OLAN SATIR BU ---
+USER_HISTORY_FILE = os.path.join(SESSION_FOLDER, f"history_{st.session_state.session_id}.json")   st.session_state.process_audio = False
+
+USER_HISTORY_FILE = os.path.join(SESSION_FOLDER, f"history_{st.session_state.session_id}.json")
+
 # --- 5. API ---
 def bilgi_bankasini_oku():
     try:
