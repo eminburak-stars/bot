@@ -9,10 +9,6 @@ from PIL import Image
 import io
 import asyncio
 import edge_tts
-import nest_asyncio  # <--- YENİ EKLENEN KRAL
-
-# --- ASYNCIO YAMASI (BU SATIR HATAYI ÇÖZER) ---
-nest_asyncio.apply()
 
 # --- 1. SAYFA AYARLARI ---
 st.set_page_config(
@@ -128,6 +124,7 @@ def image_to_bytes(image):
     except: return None
 
 # --- YENİ VE GÜÇLÜ SES MOTORU (EDGE-TTS) ---
+# --- BURASI İLK ATTIĞIN ORİJİNAL HALİNE DÖNDÜ ---
 async def edge_tts_generate(text, voice):
     """Sesi asenkron olarak oluşturur (Microsoft Neural Voice)"""
     communicate = edge_tts.Communicate(text, voice)
@@ -141,20 +138,17 @@ async def edge_tts_generate(text, voice):
 def metni_sese_cevir_bytes(text, voice_id="tr-TR-AhmetNeural"):
     """
     Streamlit (senkron) içinden Async fonksiyonu çalıştırır.
-    nest_asyncio sayesinde mevcut loop üzerinde çalışabilir.
+    RAM üzerinde sesi oluşturur, diske yazmaz.
     """
     try:
-        # loop = asyncio.get_event_loop() # Eskisi buydu, bazen hata veriyordu
-        # nest_asyncio.apply() yukarıda yapıldı, şimdi direkt run() deneyebiliriz
-        # Ama Streamlit için en güvenlisi yine loop üzerinden gitmek:
-        
+        # Yeni bir event loop oluşturup çalıştırıyoruz (ESKİ YÖNTEM)
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         audio_fp = loop.run_until_complete(edge_tts_generate(text, voice_id))
         loop.close()
         return audio_fp
     except Exception as e:
-        # st.warning(f"Ses Hatası Detayı: {e}") # Hata ayıklama için açılabilir
+        st.error(f"Ses Hatası: {e}")
         return None
 
 # --- SES İŞLEME (INPUT) ---
