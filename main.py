@@ -69,6 +69,10 @@ if "voice_text" not in st.session_state:
 if "process_audio" not in st.session_state:
     st.session_state.process_audio = False
 
+# --- YENİ EKLENEN KISIM: UPLOADER RESET İÇİN ANAHTAR ---
+if "uploader_key" not in st.session_state:
+    st.session_state.uploader_key = str(uuid.uuid4())
+
 USER_HISTORY_FILE = os.path.join(SESSION_FOLDER, f"history_{st.session_state.session_id}.json")
 
 # --- 5. API ---
@@ -129,34 +133,25 @@ def base64_to_image(base64_str):
         if base64_str: return Image.open(io.BytesIO(base64.b64decode(base64_str)))
     except: return None
 
-# --- YENİ EKLENEN FONKSİYONLAR (SES İÇİN) ---
 def bytes_to_base64_str(data_bytes):
-    """Ses verisini string olarak kaydetmek için"""
     return base64.b64encode(data_bytes).decode('utf-8')
 
 def base64_str_to_bytes(data_str):
-    """String veriyi sese çevirmek için"""
     return base64.b64decode(data_str.encode('utf-8'))
 
 # --- SES İŞLEME ---
 def sesten_yaziya(audio_bytes):
     try:
-        # Model tanımlama
         transcription_model = genai.GenerativeModel("gemini-2.0-flash")
-        
-        # Mime type'ı 'audio/wav' olarak değiştirdik, daha garanti olur.
         response = transcription_model.generate_content([
             "Bu ses kaydını dinle ve Türkçe olarak yazıya dök. Sadece söylenen metni ver, yorum yapma.",
             {"mime_type": "audio/wav", "data": audio_bytes} 
         ])
-        
-        # Eğer model boş dönerse veya metin yoksa kontrol et
         if response and response.text:
             return response.text.strip()
         else:
             return None
     except Exception as e:
-        # Hata detayını konsola yazdır (geliştirici için)
         print(f"Ses transcribe hatası: {e}") 
         return None
 
@@ -193,7 +188,8 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("İşlemler")
     
-    uploaded_file = st.file_uploader("Görsel Yükle", type=["jpg", "png", "jpeg"])
+    # --- DÜZELTME: key parametresi eklendi ---
+    uploaded_file = st.file_uploader("Görsel Yükle", type=["jpg", "png", "jpeg"], key=st.session_state.uploader_key)
     current_image = None
     if uploaded_file:
         try:
@@ -211,6 +207,7 @@ with st.sidebar:
         st.session_state.current_chat_id = str(uuid.uuid4())
         st.session_state.voice_text = None
         st.session_state.process_audio = False
+        st.session_state.uploader_key = str(uuid.uuid4()) # Uploader'ı da sıfırla
         st.rerun()
         
     st.markdown("### Geçmiş")
@@ -222,6 +219,7 @@ with st.sidebar:
             st.session_state.current_chat_id = chat["id"]
             st.session_state.voice_text = None
             st.session_state.process_audio = False
+            st.session_state.uploader_key = str(uuid.uuid4()) # Uploader'ı da sıfırla
             st.rerun()
             
     st.markdown("---")
@@ -230,6 +228,7 @@ with st.sidebar:
         st.session_state.messages = []
         st.session_state.voice_text = None
         st.session_state.process_audio = False
+        st.session_state.uploader_key = str(uuid.uuid4())
         st.rerun()
 
 # --- 8. ANA EKRAN ---
@@ -249,7 +248,6 @@ for message in st.session_state.messages:
         if message.get("content"):
              st.markdown(message["content"])
 
-        # --- BURASI DÜZELTİLDİ: KAYITLI SES VARSA OYNAT ---
         if message.get("audio"):
             try:
                 audio_bytes = base64_str_to_bytes(message["audio"])
@@ -261,28 +259,20 @@ prompt = None
 
 if ses_aktif:
     st.markdown("---")
-    # key="audio_recorder" ekledik ki Streamlit bunu sabit bir bileşen olarak görsün
     audio_value = st.audio_input("🎙️ Ses Kaydet", key="audio_recorder")
     
-    # 1. Durum: Hiç ses yoksa veya ses silindiyse state'i temizle
     if not audio_value:
         st.session_state.last_audio_id = None
         st.session_state.voice_text = None
     
-    # 2. Durum: Ses var. Bakalım yeni mi?
     else:
-        # Streamlit audio objesinin kendine has bir ID'si yoktur, o yüzden boyut ve isimden imza üretiyoruz
-        # audio_value.size ve audio_value.name kombinasyonu genelde benzersizdir.
         current_audio_id = f"{audio_value.name}_{audio_value.size}"
         
-        # Eğer bu ses daha önce işlenmemişse (ID'ler farklıysa)
         if "last_audio_id" not in st.session_state or st.session_state.last_audio_id != current_audio_id:
             st.session_state.process_audio = True
             st.session_state.last_audio_id = current_audio_id
-            # Yeni ses geldiği için eski metni temizle
             st.session_state.voice_text = None 
 
-    # İşleme tetiklendiyse
     if st.session_state.get("process_audio", False) and audio_value:
         with st.spinner("🔄 Ses işleniyor..."):
             try:
@@ -294,7 +284,6 @@ if ses_aktif:
                     if result:
                         st.session_state.voice_text = result
                         prompt = result
-                        # İşlem başarılı, rerun yapalım ki chat ekranına düşsün hemen
                         st.session_state.process_audio = False
                         st.rerun()
                     else:
@@ -304,7 +293,6 @@ if ses_aktif:
                 st.error(f"Hata: {e}")
                 st.session_state.process_audio = False
 
-# Eğer işlem bitmiş ve metin hafızadaysa onu prompt'a eşitle
 if st.session_state.voice_text:
     prompt = st.session_state.voice_text
 
@@ -312,7 +300,6 @@ if st.session_state.voice_text:
 text_input = st.chat_input("Mesajınızı buraya yazın...")
 if text_input:
     prompt = text_input
-    # Elle yazılınca sesi unut
     st.session_state.voice_text = None
 
 # --- 10. CEVAP ÜRETME ---
@@ -352,7 +339,7 @@ if prompt:
             bot_reply_text = response.text
 
         generated_image_base64 = None
-        audio_base64 = None # Ses verisi için değişken
+        audio_base64 = None 
         final_content_text = bot_reply_text
 
         if bot_reply_text.strip().startswith("[GORSEL_OLUSTUR]"):
@@ -374,16 +361,11 @@ if prompt:
             with st.chat_message("assistant", avatar="🤖"):
                 st.markdown(final_content_text)
                 
-                # --- SES OLUŞTURMA VE KAYDETME ---
                 if ses_aktif and final_content_text:
                     sound_fp = metni_sese_cevir_bytes(final_content_text)
                     if sound_fp:
                         audio_bytes = sound_fp.read()
-                        
-                        # Sesi base64'e çevirip değişkene atıyoruz
                         audio_base64 = bytes_to_base64_str(audio_bytes) 
-                        
-                        # İndirme butonu ve oynatıcı (O anlık gösterim)
                         st.download_button(
                             label="🔊 Yanıtı Sesli Dinle",
                             data=audio_bytes,
@@ -391,15 +373,13 @@ if prompt:
                             mime="audio/mpeg",
                             use_container_width=True
                         )
-                        
                         st.audio(audio_bytes, format='audio/mpeg')
 
-        # Mesajı kaydederken 'audio' alanını da ekliyoruz
         st.session_state.messages.append({
             "role": "assistant", 
             "content": final_content_text, 
             "image": generated_image_base64,
-            "audio": audio_base64 # <--- KRAL HAMLE BURASI
+            "audio": audio_base64
         })
         
         current_history = load_history()
@@ -421,6 +401,11 @@ if prompt:
             })
         
         save_history(current_history)
+
+        # --- DÜZELTME BURADA: EĞER RESİM GÖNDERİLDİYSE RESETLE ---
+        if saved_image_for_api:
+            st.session_state.uploader_key = str(uuid.uuid4())
+            st.rerun()
 
     except Exception as e:
         st.error(f"❌ Bir hata oluştu: {e}")
