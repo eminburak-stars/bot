@@ -4,3 +4,4 @@ python-dotenv
 edge-tts
 nest_asyncio
 Pillow
+gTTS
