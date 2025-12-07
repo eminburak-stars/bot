@@ -69,9 +69,20 @@ if "voice_text" not in st.session_state:
 if "process_audio" not in st.session_state:
     st.session_state.process_audio = False
 
-# --- YENİ EKLENEN KISIM: UPLOADER RESET İÇİN ANAHTAR ---
 if "uploader_key" not in st.session_state:
     st.session_state.uploader_key = str(uuid.uuid4())
+
+# YENİ: Rate limiting için
+if "last_request_time" not in st.session_state:
+    st.session_state.last_request_time = 0
+
+# YENİ: Response cache
+if "response_cache" not in st.session_state:
+    st.session_state.response_cache = {}
+
+# YENİ: Hata sayacı
+if "error_count" not in st.session_state:
+    st.session_state.error_count = 0
 
 USER_HISTORY_FILE = os.path.join(SESSION_FOLDER, f"history_{st.session_state.session_id}.json")
 
@@ -101,8 +112,7 @@ Bu etiketin hemen ardından, kullanıcının istediği görseli detaylı bir şe
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
     genai.configure(api_key=api_key)
-    # --- DÜZELTME 1: ANA MODEL 1.5 YAPILDI ---
-    model = genai.GenerativeModel(model_name='gemini-2.0-flash', system_instruction=system_instruction)
+    model = genai.GenerativeModel(model_name='gemini-2.0-flash-exp', system_instruction=system_instruction)
     imagen_model = genai.GenerativeModel("imagen-3.0-generate-001")
 except Exception as e:
     st.error(f"API Hatası: {e}")
@@ -140,11 +150,54 @@ def bytes_to_base64_str(data_bytes):
 def base64_str_to_bytes(data_str):
     return base64.b64decode(data_str.encode('utf-8'))
 
+# YENİ: Rate limiting kontrolü
+def check_rate_limit(min_interval=3):
+    """API istekleri arasında minimum süre kontrolü"""
+    current_time = time.time()
+    time_diff = current_time - st.session_state.last_request_time
+    
+    if time_diff < min_interval:
+        wait_time = min_interval - time_diff
+        st.warning(f"⏳ Lütfen {int(wait_time)} saniye bekleyin...")
+        time.sleep(wait_time)
+    
+    st.session_state.last_request_time = time.time()
+
+# YENİ: Gelişmiş hata yönetimi
+def handle_api_error(error):
+    """API hatalarını yönetir ve kullanıcıya uygun mesaj gösterir"""
+    error_str = str(error).lower()
+    
+    if "429" in error_str or "quota" in error_str or "rate" in error_str:
+        st.session_state.error_count += 1
+        
+        if st.session_state.error_count >= 3:
+            st.error("⚠️ **API kota limiti aşıldı!**")
+            st.info("""
+            **Çözüm önerileri:**
+            1. ⏰ 5-10 dakika bekleyip tekrar deneyin
+            2. 💳 [Google AI Studio](https://aistudio.google.com/)'da billing aktif edin (başlangıçta $300 ücretsiz)
+            3. 🔄 Daha az sıklıkta istek gönderin
+            """)
+            return "⚠️ API kota limiti aşıldı. Lütfen yukarıdaki çözümleri deneyin."
+        else:
+            return f"⏳ API meşgul. Lütfen {st.session_state.error_count * 10} saniye sonra tekrar deneyin."
+    
+    elif "resource_exhausted" in error_str:
+        return "⚠️ API kaynakları tükendi. Lütfen birkaç dakika bekleyin."
+    
+    elif "invalid" in error_str and "key" in error_str:
+        return "🔑 API anahtarı geçersiz. Lütfen kontrol edin."
+    
+    else:
+        return f"❌ Bir hata oluştu: {error}"
+
 # --- SES İŞLEME ---
 def sesten_yaziya(audio_bytes):
     try:
-        # --- DÜZELTME 2: SES MODELİ 1.5 YAPILDI ---
-        transcription_model = genai.GenerativeModel("gemini-2.0-flash")
+        check_rate_limit(min_interval=2)  # Ses için daha kısa bekleme
+        
+        transcription_model = genai.GenerativeModel("gemini-2.0-flash-exp")
         response = transcription_model.generate_content([
             "Bu ses kaydını dinle ve Türkçe olarak yazıya dök. Sadece söylenen metni ver, yorum yapma.",
             {"mime_type": "audio/wav", "data": audio_bytes} 
@@ -154,7 +207,7 @@ def sesten_yaziya(audio_bytes):
         else:
             return None
     except Exception as e:
-        print(f"Ses transcribe hatası: {e}") 
+        st.error(handle_api_error(e))
         return None
 
 def metni_sese_cevir_bytes(text):
@@ -168,6 +221,8 @@ def metni_sese_cevir_bytes(text):
 
 def gorsel_olustur(prompt_text):
     try:
+        check_rate_limit(min_interval=5)  # Görsel için daha uzun bekleme
+        
         result = imagen_model.generate_images(
             prompt=prompt_text,
             number_of_images=1,
@@ -182,7 +237,7 @@ def gorsel_olustur(prompt_text):
         else:
              return None, "Model görsel üretemedi."
     except Exception as e:
-        return None, str(e)
+        return None, handle_api_error(e)
 
 # --- 7. SIDEBAR ---
 with st.sidebar:
@@ -190,7 +245,6 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("İşlemler")
     
-    # --- DÜZELTME: key parametresi eklendi ---
     uploaded_file = st.file_uploader("Görsel Yükle", type=["jpg", "png", "jpeg"], key=st.session_state.uploader_key)
     current_image = None
     if uploaded_file:
@@ -210,6 +264,8 @@ with st.sidebar:
         st.session_state.voice_text = None
         st.session_state.process_audio = False
         st.session_state.uploader_key = str(uuid.uuid4())
+        st.session_state.response_cache = {}
+        st.session_state.error_count = 0
         st.rerun()
         
     st.markdown("### Geçmiş")
@@ -225,12 +281,22 @@ with st.sidebar:
             st.rerun()
             
     st.markdown("---")
+    
+    # YENİ: API durumu göstergesi
+    if st.session_state.error_count > 0:
+        st.warning(f"⚠️ API Hata Sayısı: {st.session_state.error_count}")
+        if st.button("Hata Sayacını Sıfırla", use_container_width=True):
+            st.session_state.error_count = 0
+            st.rerun()
+    
     if st.button("Temizle", type="primary", use_container_width=True):
         if os.path.exists(USER_HISTORY_FILE): os.remove(USER_HISTORY_FILE)
         st.session_state.messages = []
         st.session_state.voice_text = None
         st.session_state.process_audio = False
         st.session_state.uploader_key = str(uuid.uuid4())
+        st.session_state.response_cache = {}
+        st.session_state.error_count = 0
         st.rerun()
 
 # --- 8. ANA EKRAN ---
@@ -306,6 +372,9 @@ if text_input:
 
 # --- 10. CEVAP ÜRETME ---
 if prompt:
+    # Rate limiting kontrolü
+    check_rate_limit(min_interval=3)
+    
     saved_image_base64 = None
     saved_image_for_api = None
     if current_image:
@@ -320,94 +389,121 @@ if prompt:
         "role": "user", "content": prompt, "image": saved_image_base64
     })
 
-    try:
-        with st.spinner('🤔 Asistan düşünüyor...'):
-            chat_history_text = []
-            for m in st.session_state.messages[:-1]:
-                msg_content = m.get("content", "")
-                if msg_content is None: msg_content = "..."
-                chat_history_text.append({
-                    "role": "user" if m["role"] == "user" else "model",
-                    "parts": [msg_content]
-                })
-            
-            chat_session = model.start_chat(history=chat_history_text)
-            
-            if saved_image_for_api:
-                response = chat_session.send_message([prompt, saved_image_for_api])
-            else:
-                response = chat_session.send_message(prompt)
-            
-            bot_reply_text = response.text
-
-        generated_image_base64 = None
-        audio_base64 = None 
-        final_content_text = bot_reply_text
-
-        if bot_reply_text.strip().startswith("[GORSEL_OLUSTUR]"):
-            imagen_prompt = bot_reply_text.replace("[GORSEL_OLUSTUR]", "").strip()
-            
-            with st.spinner('🎨 Görsel oluşturuluyor...'):
-                generated_img, hata_mesaji = gorsel_olustur(imagen_prompt)
+    # YENİ: Cache kontrolü (sadece metin sorguları için)
+    cache_key = f"{prompt}_{saved_image_base64}"
+    use_cache = not saved_image_for_api and cache_key in st.session_state.response_cache
+    
+    if use_cache:
+        bot_reply_text = st.session_state.response_cache[cache_key]
+        st.info("💾 Önbellekten yüklendi")
+    else:
+        try:
+            with st.spinner('🤔 Asistan düşünüyor...'):
+                chat_history_text = []
+                for m in st.session_state.messages[:-1]:
+                    msg_content = m.get("content", "")
+                    if msg_content is None: msg_content = "..."
+                    chat_history_text.append({
+                        "role": "user" if m["role"] == "user" else "model",
+                        "parts": [msg_content]
+                    })
                 
-                if generated_img:
-                    generated_image_base64 = image_to_base64(generated_img)
-                    final_content_text = ""
-                    with st.chat_message("assistant", avatar="🤖"):
-                        st.image(generated_img, width=400, caption="Oluşturulan Görsel")
+                chat_session = model.start_chat(history=chat_history_text)
+                
+                if saved_image_for_api:
+                    response = chat_session.send_message([prompt, saved_image_for_api])
                 else:
-                    final_content_text = f"⚠️ Görsel oluşturulamadı: {hata_mesaji}"
-                    with st.chat_message("assistant", avatar="🤖"):
-                        st.error(final_content_text)
-        else:
-            with st.chat_message("assistant", avatar="🤖"):
-                st.markdown(final_content_text)
+                    response = chat_session.send_message(prompt)
                 
-                if ses_aktif and final_content_text:
-                    sound_fp = metni_sese_cevir_bytes(final_content_text)
-                    if sound_fp:
-                        audio_bytes = sound_fp.read()
-                        audio_base64 = bytes_to_base64_str(audio_bytes) 
-                        st.download_button(
-                            label="🔊 Yanıtı Sesli Dinle",
-                            data=audio_bytes,
-                            file_name="yanit.mp3",
-                            mime="audio/mpeg",
-                            use_container_width=True
-                        )
-                        st.audio(audio_bytes, format='audio/mpeg')
+                bot_reply_text = response.text
+                
+                # Başarılı istek sonrası hata sayacını sıfırla
+                st.session_state.error_count = 0
+                
+                # Cache'e kaydet (sadece metin sorguları için)
+                if not saved_image_for_api:
+                    st.session_state.response_cache[cache_key] = bot_reply_text
 
-        st.session_state.messages.append({
-            "role": "assistant", 
-            "content": final_content_text, 
-            "image": generated_image_base64,
-            "audio": audio_base64
-        })
-        
-        current_history = load_history()
-        chat_exists = False
-        if "current_chat_id" not in st.session_state:
-            st.session_state.current_chat_id = str(uuid.uuid4())
-        
-        cid = st.session_state.current_chat_id
-        for chat in current_history:
-            if chat["id"] == cid:
-                chat["messages"] = st.session_state.messages
-                chat_exists = True
-                break
-        
-        if not chat_exists:
-            title = prompt[:30] + "..." if len(prompt) > 30 else prompt
-            current_history.append({
-                "id": cid, "title": title, "timestamp": str(datetime.now()), "messages": st.session_state.messages
+        except Exception as e:
+            error_message = handle_api_error(e)
+            bot_reply_text = error_message
+            
+            with st.chat_message("assistant", avatar="🤖"):
+                st.error(bot_reply_text)
+            
+            st.session_state.messages.append({
+                "role": "assistant", 
+                "content": bot_reply_text, 
+                "image": None,
+                "audio": None
             })
+            st.stop()
+
+    generated_image_base64 = None
+    audio_base64 = None 
+    final_content_text = bot_reply_text
+
+    if bot_reply_text.strip().startswith("[GORSEL_OLUSTUR]"):
+        imagen_prompt = bot_reply_text.replace("[GORSEL_OLUSTUR]", "").strip()
         
-        save_history(current_history)
+        with st.spinner('🎨 Görsel oluşturuluyor...'):
+            generated_img, hata_mesaji = gorsel_olustur(imagen_prompt)
+            
+            if generated_img:
+                generated_image_base64 = image_to_base64(generated_img)
+                final_content_text = ""
+                with st.chat_message("assistant", avatar="🤖"):
+                    st.image(generated_img, width=400, caption="Oluşturulan Görsel")
+            else:
+                final_content_text = f"⚠️ Görsel oluşturulamadı: {hata_mesaji}"
+                with st.chat_message("assistant", avatar="🤖"):
+                    st.error(final_content_text)
+    else:
+        with st.chat_message("assistant", avatar="🤖"):
+            st.markdown(final_content_text)
+            
+            if ses_aktif and final_content_text and not final_content_text.startswith("⚠️") and not final_content_text.startswith("❌"):
+                sound_fp = metni_sese_cevir_bytes(final_content_text)
+                if sound_fp:
+                    audio_bytes = sound_fp.read()
+                    audio_base64 = bytes_to_base64_str(audio_bytes) 
+                    st.download_button(
+                        label="🔊 Yanıtı Sesli Dinle",
+                        data=audio_bytes,
+                        file_name="yanit.mp3",
+                        mime="audio/mpeg",
+                        use_container_width=True
+                    )
+                    st.audio(audio_bytes, format='audio/mpeg')
 
-        # --- DÜZELTME BURADA: EĞER RESİM GÖNDERİLDİYSE RESETLE ---
-        if saved_image_for_api:
-            st.session_state.uploader_key = str(uuid.uuid4())
-            st.rerun()
+    st.session_state.messages.append({
+        "role": "assistant", 
+        "content": final_content_text, 
+        "image": generated_image_base64,
+        "audio": audio_base64
+    })
+    
+    current_history = load_history()
+    chat_exists = False
+    if "current_chat_id" not in st.session_state:
+        st.session_state.current_chat_id = str(uuid.uuid4())
+    
+    cid = st.session_state.current_chat_id
+    for chat in current_history:
+        if chat["id"] == cid:
+            chat["messages"] = st.session_state.messages
+            chat_exists = True
+            break
+    
+    if not chat_exists:
+        title = prompt[:30] + "..." if len(prompt) > 30 else prompt
+        current_history.append({
+            "id": cid, "title": title, "timestamp": str(datetime.now()), "messages": st.session_state.messages
+        })
+    
+    save_history(current_history)
 
-    except Exception as e:
-        st.error(f"❌ Bir hata oluştu: {e}")
+    # Eğer resim gönderildiyse uploader'ı resetle
+    if saved_image_for_api:
+        st.session_state.uploader_key = str(uuid.uuid4())
+        st.rerun()
