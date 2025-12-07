@@ -101,7 +101,8 @@ Bu etiketin hemen ardından, kullanıcının istediği görseli detaylı bir şe
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(model_name='gemini-2.0-flash', system_instruction=system_instruction)
+    # --- DÜZELTME 1: ANA MODEL 1.5 YAPILDI ---
+    model = genai.GenerativeModel(model_name='gemini-1.5-flash', system_instruction=system_instruction)
     imagen_model = genai.GenerativeModel("imagen-3.0-generate-001")
 except Exception as e:
     st.error(f"API Hatası: {e}")
@@ -142,7 +143,8 @@ def base64_str_to_bytes(data_str):
 # --- SES İŞLEME ---
 def sesten_yaziya(audio_bytes):
     try:
-        transcription_model = genai.GenerativeModel("gemini-2.0-flash")
+        # --- DÜZELTME 2: SES MODELİ 1.5 YAPILDI ---
+        transcription_model = genai.GenerativeModel("gemini-1.5-flash")
         response = transcription_model.generate_content([
             "Bu ses kaydını dinle ve Türkçe olarak yazıya dök. Sadece söylenen metni ver, yorum yapma.",
             {"mime_type": "audio/wav", "data": audio_bytes} 
