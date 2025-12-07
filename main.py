@@ -69,7 +69,7 @@ if "voice_text" not in st.session_state:
 if "process_audio" not in st.session_state:
     st.session_state.process_audio = False
 
-# --- YENİ EKLENEN KISIM: UPLOADER RESET İÇİN ANAHTAR ---
+# --- UPLOADER RESET İÇİN ANAHTAR ---
 if "uploader_key" not in st.session_state:
     st.session_state.uploader_key = str(uuid.uuid4())
 
@@ -101,7 +101,8 @@ Bu etiketin hemen ardından, kullanıcının istediği görseli detaylı bir şe
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(model_name='gemini-2.0-flash', system_instruction=system_instruction)
+    # --- DEĞİŞİKLİK BURADA: Model gemini-1.5-flash yapıldı ---
+    model = genai.GenerativeModel(model_name='gemini-1.5-flash', system_instruction=system_instruction)
     imagen_model = genai.GenerativeModel("imagen-3.0-generate-001")
 except Exception as e:
     st.error(f"API Hatası: {e}")
@@ -142,7 +143,8 @@ def base64_str_to_bytes(data_str):
 # --- SES İŞLEME ---
 def sesten_yaziya(audio_bytes):
     try:
-        transcription_model = genai.GenerativeModel("gemini-2.0-flash")
+        # --- DEĞİŞİKLİK BURADA: Transcription için de 1.5-flash kullanıldı ---
+        transcription_model = genai.GenerativeModel("gemini-1.5-flash")
         response = transcription_model.generate_content([
             "Bu ses kaydını dinle ve Türkçe olarak yazıya dök. Sadece söylenen metni ver, yorum yapma.",
             {"mime_type": "audio/wav", "data": audio_bytes} 
@@ -188,7 +190,6 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("İşlemler")
     
-    # --- DÜZELTME: key parametresi eklendi ---
     uploaded_file = st.file_uploader("Görsel Yükle", type=["jpg", "png", "jpeg"], key=st.session_state.uploader_key)
     current_image = None
     if uploaded_file:
@@ -207,7 +208,7 @@ with st.sidebar:
         st.session_state.current_chat_id = str(uuid.uuid4())
         st.session_state.voice_text = None
         st.session_state.process_audio = False
-        st.session_state.uploader_key = str(uuid.uuid4()) # Uploader'ı da sıfırla
+        st.session_state.uploader_key = str(uuid.uuid4()) 
         st.rerun()
         
     st.markdown("### Geçmiş")
@@ -219,7 +220,7 @@ with st.sidebar:
             st.session_state.current_chat_id = chat["id"]
             st.session_state.voice_text = None
             st.session_state.process_audio = False
-            st.session_state.uploader_key = str(uuid.uuid4()) # Uploader'ı da sıfırla
+            st.session_state.uploader_key = str(uuid.uuid4())
             st.rerun()
             
     st.markdown("---")
@@ -402,7 +403,6 @@ if prompt:
         
         save_history(current_history)
 
-        # --- DÜZELTME BURADA: EĞER RESİM GÖNDERİLDİYSE RESETLE ---
         if saved_image_for_api:
             st.session_state.uploader_key = str(uuid.uuid4())
             st.rerun()
