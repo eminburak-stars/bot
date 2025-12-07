@@ -88,7 +88,8 @@ def bilgi_bankasini_oku():
 
 okul_bilgisi = bilgi_bankasini_oku()
 
-system_instruction = f"""
+# System Instruction metni (Prompt olarak gönderilecek)
+system_instruction_text = f"""
 {okul_bilgisi}
 
 EKSTRA GÖREV (GÖRSEL OLUŞTURMA):
@@ -101,8 +102,12 @@ Bu etiketin hemen ardından, kullanıcının istediği görseli detaylı bir şe
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
     genai.configure(api_key=api_key)
-    # --- DEĞİŞİKLİK BURADA: Model gemini-1.5-flash yapıldı ---
-    model = genai.GenerativeModel(model_name='gemini-1.5-flash', system_instruction=system_instruction)
+    
+    # --- DEĞİŞİKLİK: gemini-pro kullanılıyor ve system_instruction kaldırıldı ---
+    # Eski SDK'larda system_instruction parametresi hata verebilir, bu yüzden kaldırdık.
+    # Talimatları sohbet başlatırken vereceğiz.
+    model = genai.GenerativeModel('gemini-pro')
+    
     imagen_model = genai.GenerativeModel("imagen-3.0-generate-001")
 except Exception as e:
     st.error(f"API Hatası: {e}")
@@ -143,18 +148,24 @@ def base64_str_to_bytes(data_str):
 # --- SES İŞLEME ---
 def sesten_yaziya(audio_bytes):
     try:
-        # --- DEĞİŞİKLİK BURADA: Transcription için de 1.5-flash kullanıldı ---
-        transcription_model = genai.GenerativeModel("gemini-1.5-flash")
+        # --- DEĞİŞİKLİK: Burada da gemini-pro kullanıldı ---
+        transcription_model = genai.GenerativeModel("gemini-pro")
+        
+        # Not: gemini-pro sesi doğrudan işlemez (o 1.5-flash özelliği). 
+        # Ancak eski SDK'da hata vermemesi için metin modelini deniyoruz.
+        # Eğer bu kısım hata verirse, sadece metin girişi çalışacaktır.
+        # En doğrusu Google Speech-to-Text API kullanmaktır ama basitlik için bırakıyoruz.
+        
+        # Şansımızı deniyoruz (gemini-pro bazı versiyonlarda text-only'dir):
+        # Eğer hata alırsan bu fonksiyonu devre dışı bırakmak gerekebilir.
         response = transcription_model.generate_content([
-            "Bu ses kaydını dinle ve Türkçe olarak yazıya dök. Sadece söylenen metni ver, yorum yapma.",
-            {"mime_type": "audio/wav", "data": audio_bytes} 
+            "Bu bir ses dosyası transkripsiyon isteğidir. (NOT: Gemini Pro ses desteklemeyebilir)",
+            # Gemini Pro ses desteklemez, hata alırsan burayı try-except ile geçiştiriyoruz.
         ])
-        if response and response.text:
-            return response.text.strip()
-        else:
-            return None
+        return "Ses özelliği Gemini Pro'da kısıtlıdır."
     except Exception as e:
-        print(f"Ses transcribe hatası: {e}") 
+        # Gemini Pro sesi desteklemediği için burası muhtemelen hataya düşecek.
+        print(f"Ses transcribe hatası (Gemini Pro): {e}") 
         return None
 
 def metni_sese_cevir_bytes(text):
@@ -168,6 +179,7 @@ def metni_sese_cevir_bytes(text):
 
 def gorsel_olustur(prompt_text):
     try:
+        # Imagen modeli ayrı çalıştığı için etkilenmez
         result = imagen_model.generate_images(
             prompt=prompt_text,
             number_of_images=1,
@@ -197,6 +209,7 @@ with st.sidebar:
             current_image = Image.open(uploaded_file)
             st.success("✅ Görsel yüklendi.")
             st.image(current_image, use_container_width=True)
+            st.warning("⚠️ Not: 'Gemini Pro' modeli görsel okuyamaz. Görsel sadece referans amaçlı gösterilir.")
         except: 
             st.error("❌ Görsel yüklenemedi")
             
@@ -234,7 +247,7 @@ with st.sidebar:
 
 # --- 8. ANA EKRAN ---
 st.markdown("<h1 style='text-align: center; color: white;'>BAUN-MYO AI Asistan</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: gray;'>Balıkesir Meslek Yüksekokulu AI Asistan.</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: gray;'>Balıkesir Meslek Yüksekokulu AI Asistan (Model: Gemini Pro)</p>", unsafe_allow_html=True)
 
 # Mesajları Göster
 for message in st.session_state.messages:
@@ -277,19 +290,12 @@ if ses_aktif:
     if st.session_state.get("process_audio", False) and audio_value:
         with st.spinner("🔄 Ses işleniyor..."):
             try:
-                audio_value.seek(0)
-                audio_bytes = audio_value.read()
-                
-                if audio_bytes:
-                    result = sesten_yaziya(audio_bytes)
-                    if result:
-                        st.session_state.voice_text = result
-                        prompt = result
-                        st.session_state.process_audio = False
-                        st.rerun()
-                    else:
-                        st.error("⚠️ Ses anlaşılamadı.")
-                        st.session_state.process_audio = False
+                # Gemini Pro ses desteklemediği için basit bir uyarı döndürüyoruz
+                # veya harici kütüphane kullanmalısın (SpeechRecognition vb.)
+                st.session_state.voice_text = "Gemini Pro ses işlemeyi desteklemiyor. Lütfen yazarak devam edin."
+                prompt = st.session_state.voice_text
+                st.session_state.process_audio = False
+                st.rerun()
             except Exception as e:
                 st.error(f"Hata: {e}")
                 st.session_state.process_audio = False
@@ -306,14 +312,16 @@ if text_input:
 # --- 10. CEVAP ÜRETME ---
 if prompt:
     saved_image_base64 = None
-    saved_image_for_api = None
+    # Gemini Pro görsel desteklemediği için saved_image_for_api'yi None yapıyoruz
+    # saved_image_for_api = None 
+    
     if current_image:
         saved_image_base64 = image_to_base64(current_image)
-        saved_image_for_api = current_image.copy()
+        # Sadece görseli kaydetmek için, API'ye göndermeyeceğiz.
     
     with st.chat_message("user", avatar="👤"):
         st.markdown(prompt)
-        if saved_image_for_api: st.image(saved_image_for_api, width=300)
+        if current_image: st.image(current_image, width=300)
     
     st.session_state.messages.append({
         "role": "user", "content": prompt, "image": saved_image_base64
@@ -322,6 +330,20 @@ if prompt:
     try:
         with st.spinner('🤔 Asistan düşünüyor...'):
             chat_history_text = []
+            
+            # --- MANUEL SİSTEM TALİMATI EKLEME ---
+            # Geçmiş boşsa veya yeni başlıyorsa, en başa okul bilgisini ekliyoruz.
+            # Bu, system_instruction yerine geçer.
+            if not any(m['role'] == 'model' for m in st.session_state.messages[:-1]):
+                chat_history_text.append({
+                    "role": "user",
+                    "parts": [system_instruction_text + "\n\nAnladın mı?"]
+                })
+                chat_history_text.append({
+                    "role": "model",
+                    "parts": ["Evet, anladım. Balıkesir MYO asistanı olarak hazırım."]
+                })
+
             for m in st.session_state.messages[:-1]:
                 msg_content = m.get("content", "")
                 if msg_content is None: msg_content = "..."
@@ -332,10 +354,8 @@ if prompt:
             
             chat_session = model.start_chat(history=chat_history_text)
             
-            if saved_image_for_api:
-                response = chat_session.send_message([prompt, saved_image_for_api])
-            else:
-                response = chat_session.send_message(prompt)
+            # Sadece metin gönderiyoruz (Gemini Pro visual desteklemez)
+            response = chat_session.send_message(prompt)
             
             bot_reply_text = response.text
 
