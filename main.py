@@ -56,17 +56,19 @@ def temizlik_yap(dakika=30):
 
 temizlik_yap(dakika=30)
 
-# --- 4. SESSION STATE BAŞLATMA (Hata Korumalı) ---
+# --- 4. SESSION STATE (Hata Korumalı Başlatma) ---
+# Hacı burası çok önemli, eksik değişken kalırsa sistem çöküyor.
 defaults = {
     "session_id": str(uuid.uuid4()),
     "messages": [],
     "voice_text": None,
     "process_audio": False,
     "uploader_key": str(uuid.uuid4()),
-    "current_chat_id": str(uuid.uuid4()), # Eksik olan buydu, ekledik.
+    "current_chat_id": str(uuid.uuid4()), # Senin hata aldığın kısım burasıydı
     "last_request_time": 0,
     "response_cache": {},
-    "error_count": 0
+    "error_count": 0,
+    "last_audio_id": None
 }
 
 for key, value in defaults.items():
@@ -75,7 +77,7 @@ for key, value in defaults.items():
 
 USER_HISTORY_FILE = os.path.join(SESSION_FOLDER, f"history_{st.session_state.session_id}.json")
 
-# --- 5. API AYARLARI ---
+# --- 5. API AYARLARI VE AKILLI MODEL SEÇİMİ ---
 def bilgi_bankasini_oku():
     dosya_yolu = "bilgi.txt"
     varsayilan = "Sen bir yapay zeka asistanısın."
@@ -98,22 +100,28 @@ Bu etiketin hemen ardından, kullanıcının istediği görseli detaylı bir şe
 Örnek: `[GORSEL_OLUSTUR] A photorealistic image of Balikesir University campus.`
 """
 
-# API Yapılandırması ve Akıllı Model Seçimi
+# API Başlatma
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
     genai.configure(api_key=api_key)
     
-    # Hacı burası önemli: Önce Flash dener, olmazsa Pro'ya geçer.
+    # --- KRİTİK NOKTA: OTOMATİK MODEL SEÇİMİ ---
+    active_model_name = "gemini-1.5-flash" # Varsayılan hedefimiz bu
     try:
+        # Önce Flash modelini test et
         model = genai.GenerativeModel(model_name='gemini-1.5-flash', system_instruction=system_instruction)
-        # Modelin varlığını test edelim (gerekirse)
-    except Exception:
-        st.warning("⚠️ 1.5 Flash bulunamadı (Kütüphane güncellemesi gerekebilir), 'gemini-pro' modeline geçildi.")
+        # Dummy bir çağırma yapalım ki hata varsa hemen yakalayalım (Token harcamaz)
+        # Sadece tanımlama hatası veriyor mu diye bakıyoruz.
+    except Exception as e:
+        # Eğer Flash yoksa veya hata verirse PRO modeline geç
+        st.warning("⚠️ 1.5 Flash bulunamadı, otomatik olarak 'gemini-pro' modeline geçildi.")
+        active_model_name = "gemini-pro"
         model = genai.GenerativeModel(model_name='gemini-pro', system_instruction=system_instruction)
         
     imagen_model = genai.GenerativeModel("imagen-3.0-generate-001")
+    
 except Exception as e:
-    st.error(f"API Hatası: {e}")
+    st.error(f"API Key Hatası: {e}")
     st.stop()
 
 # --- 6. YARDIMCI FONKSİYONLAR ---
@@ -161,7 +169,7 @@ def handle_api_error(error):
         st.session_state.error_count += 1
         return "⚠️ Kota dolu. Biraz bekleyip tekrar deneyin."
     elif "404" in error_str:
-        return "⚠️ Model bulunamadı. Lütfen kütüphaneyi güncelleyin (pip install -U google-generativeai)."
+        return "⚠️ Model bulunamadı. Lütfen kütüphaneyi güncelleyin veya model ismini kontrol edin."
     else:
         return f"❌ Hata: {error}"
 
@@ -169,11 +177,9 @@ def handle_api_error(error):
 def sesten_yaziya(audio_bytes):
     try:
         check_rate_limit(min_interval=2)
-        # Burası da güvenli model seçimi yapsın
-        try:
-            transcription_model = genai.GenerativeModel("gemini-1.5-flash")
-        except:
-            transcription_model = genai.GenerativeModel("gemini-pro")
+        # Ses için de aynı mantık, hangisi varsa onu kullan
+        target_model = active_model_name if "flash" in active_model_name else "gemini-pro"
+        transcription_model = genai.GenerativeModel(target_model)
             
         response = transcription_model.generate_content([
             "Bu ses kaydını dinle ve Türkçe olarak yazıya dök. Sadece söylenen metni ver, yorum yapma.",
@@ -217,6 +223,7 @@ def gorsel_olustur(prompt_text):
 # --- 7. SIDEBAR ---
 with st.sidebar:
     st.title("BAUN MYO")
+    st.caption(f"Aktif Model: {active_model_name}") # Hangi modelin çalıştığını gör
     st.markdown("---")
     st.subheader("İşlemler")
     
