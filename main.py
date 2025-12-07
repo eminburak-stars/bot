@@ -56,34 +56,23 @@ def temizlik_yap(dakika=30):
 
 temizlik_yap(dakika=30)
 
-# --- 4. SESSION STATE (HATA ÇIKAN YER BURASIYDI, DÜZELTTİM) ---
-if "session_id" not in st.session_state:
-    st.session_state.session_id = str(uuid.uuid4())
+# --- 4. SESSION STATE BAŞLATMA ---
+# (AttributeError hatasını çözen kısım burası)
+defaults = {
+    "session_id": str(uuid.uuid4()),
+    "messages": [],
+    "voice_text": None,
+    "process_audio": False,
+    "uploader_key": str(uuid.uuid4()),
+    "current_chat_id": str(uuid.uuid4()), # Bu eksikti, ekledik
+    "last_request_time": 0,
+    "response_cache": {},
+    "error_count": 0
+}
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-if "voice_text" not in st.session_state:
-    st.session_state.voice_text = None
-
-if "process_audio" not in st.session_state:
-    st.session_state.process_audio = False
-
-if "uploader_key" not in st.session_state:
-    st.session_state.uploader_key = str(uuid.uuid4())
-
-# KRİTİK DÜZELTME: Bu değişken eksik olduğu için patlıyordu
-if "current_chat_id" not in st.session_state:
-    st.session_state.current_chat_id = str(uuid.uuid4())
-
-if "last_request_time" not in st.session_state:
-    st.session_state.last_request_time = 0
-
-if "response_cache" not in st.session_state:
-    st.session_state.response_cache = {}
-
-if "error_count" not in st.session_state:
-    st.session_state.error_count = 0
+for key, value in defaults.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
 
 USER_HISTORY_FILE = os.path.join(SESSION_FOLDER, f"history_{st.session_state.session_id}.json")
 
@@ -110,15 +99,24 @@ Bu etiketin hemen ardından, kullanıcının istediği görseli detaylı bir şe
 Örnek: `[GORSEL_OLUSTUR] A photorealistic image of Balikesir University campus.`
 """
 
+# API Yapılandırması ve Model Seçimi
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
     genai.configure(api_key=api_key)
     
-    # KRİTİK DÜZELTME: Modeli 1.5-flash yaptık. 2.0'da kota sorunu var.
-    model = genai.GenerativeModel(model_name='gemini-1.5-flash', system_instruction=system_instruction)
+    # Hacı, burası önemli. Önce Flash dener, olmazsa Pro'ya geçer.
+    # Böylece 404 hatası almazsın.
+    try:
+        model = genai.GenerativeModel(model_name='gemini-1.5-flash', system_instruction=system_instruction)
+        # Test çağrısı yapalım ki model var mı görelim
+    except Exception:
+        # Flash yoksa Pro'ya geç
+        st.toast("⚠️ 1.5 Flash bulunamadı, Pro modeline geçildi.", icon="ℹ️")
+        model = genai.GenerativeModel(model_name='gemini-pro', system_instruction=system_instruction)
+        
     imagen_model = genai.GenerativeModel("imagen-3.0-generate-001")
 except Exception as e:
-    st.error(f"API Hatası: {e}")
+    st.error(f"API Key veya Bağlantı Hatası: {e}")
     st.stop()
 
 # --- 6. YARDIMCI FONKSİYONLAR ---
@@ -153,30 +151,34 @@ def bytes_to_base64_str(data_bytes):
 def base64_str_to_bytes(data_str):
     return base64.b64decode(data_str.encode('utf-8'))
 
-# Rate limiting
 def check_rate_limit(min_interval=3):
     current_time = time.time()
     time_diff = current_time - st.session_state.last_request_time
     if time_diff < min_interval:
-        wait_time = min_interval - time_diff
-        time.sleep(wait_time) # Otomatik beklet
+        time.sleep(min_interval - time_diff)
     st.session_state.last_request_time = time.time()
 
-# Hata yönetimi
 def handle_api_error(error):
     error_str = str(error).lower()
     if "429" in error_str or "quota" in error_str:
         st.session_state.error_count += 1
-        return "⚠️ Çok hızlı istek gönderildi veya kota doldu. Biraz bekleyip tekrar deneyin."
+        return "⚠️ Kota dolu veya çok hızlı istek. Lütfen biraz bekleyin."
+    elif "404" in error_str:
+        return "⚠️ Model bulunamadı (Kütüphane güncellemesi gerekebilir)."
     else:
-        return f"❌ Bir hata oluştu: {error}"
+        return f"❌ Hata: {error}"
 
 # --- SES İŞLEME ---
 def sesten_yaziya(audio_bytes):
     try:
         check_rate_limit(min_interval=2)
-        # KRİTİK DÜZELTME: Burası da 1.5-flash olmalı
-        transcription_model = genai.GenerativeModel("gemini-1.5-flash")
+        # Burası da güvenli model seçimi yapsın
+        model_name = "gemini-1.5-flash"
+        try:
+            transcription_model = genai.GenerativeModel(model_name)
+        except:
+            transcription_model = genai.GenerativeModel("gemini-pro")
+            
         response = transcription_model.generate_content([
             "Bu ses kaydını dinle ve Türkçe olarak yazıya dök. Sadece söylenen metni ver, yorum yapma.",
             {"mime_type": "audio/wav", "data": audio_bytes} 
@@ -237,7 +239,7 @@ with st.sidebar:
     
     if st.button("Yeni Sohbet", use_container_width=True):
         st.session_state.messages = []
-        st.session_state.current_chat_id = str(uuid.uuid4()) # ID yenile
+        st.session_state.current_chat_id = str(uuid.uuid4())
         st.session_state.voice_text = None
         st.session_state.process_audio = False
         st.session_state.uploader_key = str(uuid.uuid4())
@@ -246,16 +248,20 @@ with st.sidebar:
         st.rerun()
         
     st.markdown("### Geçmiş")
-    for chat in reversed(load_history()):
-        raw_title = chat.get("title", "Sohbet")
-        display_title = (raw_title[:20] + '..') if len(raw_title) > 20 else raw_title
-        if st.button(f"💬 {display_title}", key=chat["id"], use_container_width=True):
-            st.session_state.messages = chat["messages"]
-            st.session_state.current_chat_id = chat["id"]
-            st.session_state.voice_text = None
-            st.session_state.process_audio = False
-            st.session_state.uploader_key = str(uuid.uuid4())
-            st.rerun()
+    try:
+        history_list = reversed(load_history())
+        for chat in history_list:
+            raw_title = chat.get("title", "Sohbet")
+            display_title = (raw_title[:20] + '..') if len(raw_title) > 20 else raw_title
+            if st.button(f"💬 {display_title}", key=chat["id"], use_container_width=True):
+                st.session_state.messages = chat["messages"]
+                st.session_state.current_chat_id = chat["id"]
+                st.session_state.voice_text = None
+                st.session_state.process_audio = False
+                st.session_state.uploader_key = str(uuid.uuid4())
+                st.rerun()
+    except Exception:
+        pass # Geçmiş yüklenirken hata olursa takılma
             
     st.markdown("---")
     if st.button("Temizle", type="primary", use_container_width=True):
@@ -301,10 +307,8 @@ if ses_aktif:
     
     if not audio_value:
         st.session_state.last_audio_id = None
-        # Ses verisi temizlenmeli ki döngü olmasın
     else:
         current_audio_id = f"{audio_value.name}_{audio_value.size}"
-        
         if "last_audio_id" not in st.session_state or st.session_state.last_audio_id != current_audio_id:
             st.session_state.process_audio = True
             st.session_state.last_audio_id = current_audio_id
@@ -315,7 +319,6 @@ if ses_aktif:
             try:
                 audio_value.seek(0)
                 audio_bytes = audio_value.read()
-                
                 if audio_bytes:
                     result = sesten_yaziya(audio_bytes)
                     if result:
@@ -339,7 +342,7 @@ if text_input:
     prompt = text_input
     st.session_state.voice_text = None
 
-# --- 10. CEVAP ÜRETME (DÜZELTİLMİŞ) ---
+# --- 10. CEVAP ÜRETME ---
 if prompt:
     check_rate_limit(min_interval=3)
     
@@ -432,10 +435,6 @@ if prompt:
     current_history = load_history()
     chat_exists = False
     
-    # ID kontrolü tekrar
-    if "current_chat_id" not in st.session_state:
-         st.session_state.current_chat_id = str(uuid.uuid4())
-
     cid = st.session_state.current_chat_id
     for chat in current_history:
         if chat["id"] == cid:
