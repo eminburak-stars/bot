@@ -56,15 +56,14 @@ def temizlik_yap(dakika=30):
 
 temizlik_yap(dakika=30)
 
-# --- 4. SESSION STATE BAŞLATMA ---
-# (AttributeError hatasını çözen kısım burası)
+# --- 4. SESSION STATE BAŞLATMA (Hata Korumalı) ---
 defaults = {
     "session_id": str(uuid.uuid4()),
     "messages": [],
     "voice_text": None,
     "process_audio": False,
     "uploader_key": str(uuid.uuid4()),
-    "current_chat_id": str(uuid.uuid4()), # Bu eksikti, ekledik
+    "current_chat_id": str(uuid.uuid4()), # Eksik olan buydu, ekledik.
     "last_request_time": 0,
     "response_cache": {},
     "error_count": 0
@@ -99,24 +98,22 @@ Bu etiketin hemen ardından, kullanıcının istediği görseli detaylı bir şe
 Örnek: `[GORSEL_OLUSTUR] A photorealistic image of Balikesir University campus.`
 """
 
-# API Yapılandırması ve Model Seçimi
+# API Yapılandırması ve Akıllı Model Seçimi
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
     genai.configure(api_key=api_key)
     
-    # Hacı, burası önemli. Önce Flash dener, olmazsa Pro'ya geçer.
-    # Böylece 404 hatası almazsın.
+    # Hacı burası önemli: Önce Flash dener, olmazsa Pro'ya geçer.
     try:
         model = genai.GenerativeModel(model_name='gemini-1.5-flash', system_instruction=system_instruction)
-        # Test çağrısı yapalım ki model var mı görelim
+        # Modelin varlığını test edelim (gerekirse)
     except Exception:
-        # Flash yoksa Pro'ya geç
-        st.toast("⚠️ 1.5 Flash bulunamadı, Pro modeline geçildi.", icon="ℹ️")
+        st.warning("⚠️ 1.5 Flash bulunamadı (Kütüphane güncellemesi gerekebilir), 'gemini-pro' modeline geçildi.")
         model = genai.GenerativeModel(model_name='gemini-pro', system_instruction=system_instruction)
         
     imagen_model = genai.GenerativeModel("imagen-3.0-generate-001")
 except Exception as e:
-    st.error(f"API Key veya Bağlantı Hatası: {e}")
+    st.error(f"API Hatası: {e}")
     st.stop()
 
 # --- 6. YARDIMCI FONKSİYONLAR ---
@@ -162,9 +159,9 @@ def handle_api_error(error):
     error_str = str(error).lower()
     if "429" in error_str or "quota" in error_str:
         st.session_state.error_count += 1
-        return "⚠️ Kota dolu veya çok hızlı istek. Lütfen biraz bekleyin."
+        return "⚠️ Kota dolu. Biraz bekleyip tekrar deneyin."
     elif "404" in error_str:
-        return "⚠️ Model bulunamadı (Kütüphane güncellemesi gerekebilir)."
+        return "⚠️ Model bulunamadı. Lütfen kütüphaneyi güncelleyin (pip install -U google-generativeai)."
     else:
         return f"❌ Hata: {error}"
 
@@ -173,9 +170,8 @@ def sesten_yaziya(audio_bytes):
     try:
         check_rate_limit(min_interval=2)
         # Burası da güvenli model seçimi yapsın
-        model_name = "gemini-1.5-flash"
         try:
-            transcription_model = genai.GenerativeModel(model_name)
+            transcription_model = genai.GenerativeModel("gemini-1.5-flash")
         except:
             transcription_model = genai.GenerativeModel("gemini-pro")
             
@@ -260,8 +256,7 @@ with st.sidebar:
                 st.session_state.process_audio = False
                 st.session_state.uploader_key = str(uuid.uuid4())
                 st.rerun()
-    except Exception:
-        pass # Geçmiş yüklenirken hata olursa takılma
+    except: pass
             
     st.markdown("---")
     if st.button("Temizle", type="primary", use_container_width=True):
