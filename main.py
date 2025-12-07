@@ -10,22 +10,6 @@ import io
 import base64
 from gtts import gTTS 
 
-# --- BU KODU GEÇİCİ OLARAK EN TEPEYE YAPIŞTIR ---
-try:
-    st.sidebar.warning("DEBUG MODU: Modeller Listeleniyor...")
-    api_key = st.secrets["GOOGLE_API_KEY"]
-    genai.configure(api_key=api_key)
-    
-    available_models = []
-    for m in genai.list_models():
-        if 'generateContent' in m.supported_generation_methods:
-            available_models.append(m.name)
-            
-    st.sidebar.code("\n".join(available_models))
-except Exception as e:
-    st.sidebar.error(f"Model listeleme hatası: {e}")
-# --------------------------------------------------
-
 # --- 1. SAYFA AYARLARI ---
 st.set_page_config(
     page_title="BAUN-MYO Asistan", 
@@ -104,8 +88,8 @@ def bilgi_bankasini_oku():
 
 okul_bilgisi = bilgi_bankasini_oku()
 
-# System Instruction metni (Prompt olarak gönderilecek)
-system_instruction_text = f"""
+# System Instruction
+system_instruction = f"""
 {okul_bilgisi}
 
 EKSTRA GÖREV (GÖRSEL OLUŞTURMA):
@@ -119,10 +103,9 @@ try:
     api_key = st.secrets["GOOGLE_API_KEY"]
     genai.configure(api_key=api_key)
     
-    # --- DEĞİŞİKLİK: gemini-pro kullanılıyor ve system_instruction kaldırıldı ---
-    # Eski SDK'larda system_instruction parametresi hata verebilir, bu yüzden kaldırdık.
-    # Talimatları sohbet başlatırken vereceğiz.
-    model = genai.GenerativeModel('gemini-pro')
+    # --- KRİTİK DEĞİŞİKLİK: Senin listendeki model seçildi ---
+    # models/gemini-2.5-flash hem çok hızlıdır hem de görsel okuyabilir.
+    model = genai.GenerativeModel('models/gemini-2.5-flash', system_instruction=system_instruction)
     
     imagen_model = genai.GenerativeModel("imagen-3.0-generate-001")
 except Exception as e:
@@ -164,24 +147,17 @@ def base64_str_to_bytes(data_str):
 # --- SES İŞLEME ---
 def sesten_yaziya(audio_bytes):
     try:
-        # --- DEĞİŞİKLİK: Burada da gemini-pro kullanıldı ---
-        transcription_model = genai.GenerativeModel("gemini-pro")
-        
-        # Not: gemini-pro sesi doğrudan işlemez (o 1.5-flash özelliği). 
-        # Ancak eski SDK'da hata vermemesi için metin modelini deniyoruz.
-        # Eğer bu kısım hata verirse, sadece metin girişi çalışacaktır.
-        # En doğrusu Google Speech-to-Text API kullanmaktır ama basitlik için bırakıyoruz.
-        
-        # Şansımızı deniyoruz (gemini-pro bazı versiyonlarda text-only'dir):
-        # Eğer hata alırsan bu fonksiyonu devre dışı bırakmak gerekebilir.
+        # --- DEĞİŞİKLİK: Ses işleme için de aynı güçlü modeli kullanıyoruz ---
+        transcription_model = genai.GenerativeModel("models/gemini-2.5-flash")
         response = transcription_model.generate_content([
-            "Bu bir ses dosyası transkripsiyon isteğidir. (NOT: Gemini Pro ses desteklemeyebilir)",
-            # Gemini Pro ses desteklemez, hata alırsan burayı try-except ile geçiştiriyoruz.
+            "Bu ses kaydını dinle ve Türkçe olarak yazıya dök. Sadece söylenen metni ver, yorum yapma.",
+            {"mime_type": "audio/wav", "data": audio_bytes} 
         ])
-        return "Ses özelliği Gemini Pro'da kısıtlıdır."
+        if response and response.text:
+            return response.text.strip()
+        return None
     except Exception as e:
-        # Gemini Pro sesi desteklemediği için burası muhtemelen hataya düşecek.
-        print(f"Ses transcribe hatası (Gemini Pro): {e}") 
+        print(f"Ses transcribe hatası: {e}") 
         return None
 
 def metni_sese_cevir_bytes(text):
@@ -195,7 +171,6 @@ def metni_sese_cevir_bytes(text):
 
 def gorsel_olustur(prompt_text):
     try:
-        # Imagen modeli ayrı çalıştığı için etkilenmez
         result = imagen_model.generate_images(
             prompt=prompt_text,
             number_of_images=1,
@@ -215,6 +190,7 @@ def gorsel_olustur(prompt_text):
 # --- 7. SIDEBAR ---
 with st.sidebar:
     st.title("BAUN MYO")
+    st.caption("v2.5 AI Destekli")
     st.markdown("---")
     st.subheader("İşlemler")
     
@@ -225,7 +201,6 @@ with st.sidebar:
             current_image = Image.open(uploaded_file)
             st.success("✅ Görsel yüklendi.")
             st.image(current_image, use_container_width=True)
-            st.warning("⚠️ Not: 'Gemini Pro' modeli görsel okuyamaz. Görsel sadece referans amaçlı gösterilir.")
         except: 
             st.error("❌ Görsel yüklenemedi")
             
@@ -263,7 +238,7 @@ with st.sidebar:
 
 # --- 8. ANA EKRAN ---
 st.markdown("<h1 style='text-align: center; color: white;'>BAUN-MYO AI Asistan</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: gray;'>Balıkesir Meslek Yüksekokulu AI Asistan (Model: Gemini Pro)</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: gray;'>Balıkesir Meslek Yüksekokulu AI Asistan (Model: Gemini 2.5 Flash)</p>", unsafe_allow_html=True)
 
 # Mesajları Göster
 for message in st.session_state.messages:
@@ -306,12 +281,19 @@ if ses_aktif:
     if st.session_state.get("process_audio", False) and audio_value:
         with st.spinner("🔄 Ses işleniyor..."):
             try:
-                # Gemini Pro ses desteklemediği için basit bir uyarı döndürüyoruz
-                # veya harici kütüphane kullanmalısın (SpeechRecognition vb.)
-                st.session_state.voice_text = "Gemini Pro ses işlemeyi desteklemiyor. Lütfen yazarak devam edin."
-                prompt = st.session_state.voice_text
-                st.session_state.process_audio = False
-                st.rerun()
+                audio_value.seek(0)
+                audio_bytes = audio_value.read()
+                
+                if audio_bytes:
+                    result = sesten_yaziya(audio_bytes)
+                    if result:
+                        st.session_state.voice_text = result
+                        prompt = result
+                        st.session_state.process_audio = False
+                        st.rerun()
+                    else:
+                        st.error("⚠️ Ses anlaşılamadı.")
+                        st.session_state.process_audio = False
             except Exception as e:
                 st.error(f"Hata: {e}")
                 st.session_state.process_audio = False
@@ -328,12 +310,11 @@ if text_input:
 # --- 10. CEVAP ÜRETME ---
 if prompt:
     saved_image_base64 = None
-    # Gemini Pro görsel desteklemediği için saved_image_for_api'yi None yapıyoruz
-    # saved_image_for_api = None 
+    saved_image_for_api = None
     
     if current_image:
         saved_image_base64 = image_to_base64(current_image)
-        # Sadece görseli kaydetmek için, API'ye göndermeyeceğiz.
+        saved_image_for_api = current_image.copy()
     
     with st.chat_message("user", avatar="👤"):
         st.markdown(prompt)
@@ -347,19 +328,6 @@ if prompt:
         with st.spinner('🤔 Asistan düşünüyor...'):
             chat_history_text = []
             
-            # --- MANUEL SİSTEM TALİMATI EKLEME ---
-            # Geçmiş boşsa veya yeni başlıyorsa, en başa okul bilgisini ekliyoruz.
-            # Bu, system_instruction yerine geçer.
-            if not any(m['role'] == 'model' for m in st.session_state.messages[:-1]):
-                chat_history_text.append({
-                    "role": "user",
-                    "parts": [system_instruction_text + "\n\nAnladın mı?"]
-                })
-                chat_history_text.append({
-                    "role": "model",
-                    "parts": ["Evet, anladım. Balıkesir MYO asistanı olarak hazırım."]
-                })
-
             for m in st.session_state.messages[:-1]:
                 msg_content = m.get("content", "")
                 if msg_content is None: msg_content = "..."
@@ -370,8 +338,11 @@ if prompt:
             
             chat_session = model.start_chat(history=chat_history_text)
             
-            # Sadece metin gönderiyoruz (Gemini Pro visual desteklemez)
-            response = chat_session.send_message(prompt)
+            # Gemini 2.5 Flash görsel destekler
+            if saved_image_for_api:
+                response = chat_session.send_message([prompt, saved_image_for_api])
+            else:
+                response = chat_session.send_message(prompt)
             
             bot_reply_text = response.text
 
