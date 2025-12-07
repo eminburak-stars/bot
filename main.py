@@ -10,6 +10,22 @@ import io
 import base64
 from gtts import gTTS 
 
+# --- BU KODU GEÇİCİ OLARAK EN TEPEYE YAPIŞTIR ---
+try:
+    st.sidebar.warning("DEBUG MODU: Modeller Listeleniyor...")
+    api_key = st.secrets["GOOGLE_API_KEY"]
+    genai.configure(api_key=api_key)
+    
+    available_models = []
+    for m in genai.list_models():
+        if 'generateContent' in m.supported_generation_methods:
+            available_models.append(m.name)
+            
+    st.sidebar.code("\n".join(available_models))
+except Exception as e:
+    st.sidebar.error(f"Model listeleme hatası: {e}")
+# --------------------------------------------------
+
 # --- 1. SAYFA AYARLARI ---
 st.set_page_config(
     page_title="BAUN-MYO Asistan", 
