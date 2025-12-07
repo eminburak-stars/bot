@@ -373,7 +373,7 @@ if text_input:
 # --- 10. CEVAP ÜRETME ---
 if prompt:
     # Rate limiting kontrolü
-    check_rate_limit(min_interval=3)
+    check_rate_limit(min_interval=4) # Süreyi biraz arttırdım, garanti olsun
     
     saved_image_base64 = None
     saved_image_for_api = None
@@ -381,15 +381,17 @@ if prompt:
         saved_image_base64 = image_to_base64(current_image)
         saved_image_for_api = current_image.copy()
     
+    # Kullanıcı mesajını ekrana bas
     with st.chat_message("user", avatar="👤"):
         st.markdown(prompt)
         if saved_image_for_api: st.image(saved_image_for_api, width=300)
     
+    # Geçmişe ekle
     st.session_state.messages.append({
         "role": "user", "content": prompt, "image": saved_image_base64
     })
 
-    # YENİ: Cache kontrolü (sadece metin sorguları için)
+    # Cache kontrolü
     cache_key = f"{prompt}_{saved_image_base64}"
     use_cache = not saved_image_for_api and cache_key in st.session_state.response_cache
     
@@ -399,15 +401,18 @@ if prompt:
     else:
         try:
             with st.spinner('🤔 Asistan düşünüyor...'):
+                # Geçmişi düzenle
                 chat_history_text = []
-                for m in st.session_state.messages[:-1]:
+                for m in st.session_state.messages[:-1]: # Son mesajı hariç tut
                     msg_content = m.get("content", "")
                     if msg_content is None: msg_content = "..."
+                    role = "user" if m["role"] == "user" else "model"
                     chat_history_text.append({
-                        "role": "user" if m["role"] == "user" else "model",
+                        "role": role,
                         "parts": [msg_content]
                     })
                 
+                # Sohbeti başlat
                 chat_session = model.start_chat(history=chat_history_text)
                 
                 if saved_image_for_api:
@@ -417,41 +422,31 @@ if prompt:
                 
                 bot_reply_text = response.text
                 
-                # Başarılı istek sonrası hata sayacını sıfırla
+                # Hata sayacını sıfırla
                 st.session_state.error_count = 0
                 
-                # Cache'e kaydet (sadece metin sorguları için)
+                # Cache'e kaydet
                 if not saved_image_for_api:
                     st.session_state.response_cache[cache_key] = bot_reply_text
 
         except Exception as e:
             error_message = handle_api_error(e)
             bot_reply_text = error_message
+            st.error(f"Hata detayı: {e}") # Hata detayını gör
             
-            with st.chat_message("assistant", avatar="🤖"):
-                st.error(bot_reply_text)
-            
-            st.session_state.messages.append({
-                "role": "assistant", 
-                "content": bot_reply_text, 
-                "image": None,
-                "audio": None
-            })
-            st.stop()
-
+    # Asistan cevabını işle
     generated_image_base64 = None
     audio_base64 = None 
     final_content_text = bot_reply_text
 
+    # Görsel oluşturma isteği var mı?
     if bot_reply_text.strip().startswith("[GORSEL_OLUSTUR]"):
         imagen_prompt = bot_reply_text.replace("[GORSEL_OLUSTUR]", "").strip()
-        
         with st.spinner('🎨 Görsel oluşturuluyor...'):
             generated_img, hata_mesaji = gorsel_olustur(imagen_prompt)
-            
             if generated_img:
                 generated_image_base64 = image_to_base64(generated_img)
-                final_content_text = ""
+                final_content_text = "" # Metni boşalt, sadece resim görünsün
                 with st.chat_message("assistant", avatar="🤖"):
                     st.image(generated_img, width=400, caption="Oluşturulan Görsel")
             else:
@@ -459,23 +454,19 @@ if prompt:
                 with st.chat_message("assistant", avatar="🤖"):
                     st.error(final_content_text)
     else:
+        # Normal metin cevabı
         with st.chat_message("assistant", avatar="🤖"):
             st.markdown(final_content_text)
             
-            if ses_aktif and final_content_text and not final_content_text.startswith("⚠️") and not final_content_text.startswith("❌"):
+            # Sesli okuma
+            if ses_aktif and final_content_text and not final_content_text.startswith("⚠️"):
                 sound_fp = metni_sese_cevir_bytes(final_content_text)
                 if sound_fp:
                     audio_bytes = sound_fp.read()
                     audio_base64 = bytes_to_base64_str(audio_bytes) 
-                    st.download_button(
-                        label="🔊 Yanıtı Sesli Dinle",
-                        data=audio_bytes,
-                        file_name="yanit.mp3",
-                        mime="audio/mpeg",
-                        use_container_width=True
-                    )
                     st.audio(audio_bytes, format='audio/mpeg')
 
+    # Mesajı geçmişe kaydet
     st.session_state.messages.append({
         "role": "assistant", 
         "content": final_content_text, 
@@ -483,11 +474,9 @@ if prompt:
         "audio": audio_base64
     })
     
+    # Dosyaya kaydet
     current_history = load_history()
     chat_exists = False
-    if "current_chat_id" not in st.session_state:
-        st.session_state.current_chat_id = str(uuid.uuid4())
-    
     cid = st.session_state.current_chat_id
     for chat in current_history:
         if chat["id"] == cid:
@@ -503,7 +492,13 @@ if prompt:
     
     save_history(current_history)
 
-    # Eğer resim gönderildiyse uploader'ı resetle
+    # --- KRİTİK DÖNGÜ KIRICI ---
+    # Eğer bu prompt sesten geldiyse, işimiz bitti, değişkeni temizle!
+    if st.session_state.voice_text:
+        st.session_state.voice_text = None
+        st.rerun()
+
+    # Eğer resim yüklendiyse, temizle ve yenile
     if saved_image_for_api:
         st.session_state.uploader_key = str(uuid.uuid4())
         st.rerun()
